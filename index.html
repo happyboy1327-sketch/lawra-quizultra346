@@ -177,7 +177,7 @@ function checkAnswer(selectedBtn, quiz) {
   });
   
   // 해설 표시
-  document.getElementById('explanation-content').textContent = ${formatBold(quiz.explanation)};
+  document.getElementById('explanation-content').innerHTML = formatBold(quiz.explanation);
   document.getElementById('explanation-area').style.display = 'block';
   
   // 다음 버튼 표시
