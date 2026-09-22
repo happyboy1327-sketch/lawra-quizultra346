@@ -264,8 +264,8 @@ function handleEnterReviewMode() {
     div.innerHTML = `
   <h3 style="color:var(--primary-color)">${idx + 1}. ${formatBold(q.question)}</h3>
   <p style="color:#6c757d;font-size:0.9em;margin:5px 0 15px">
-    🕒 ${q.id ? new Date(Number(q.id.replace('quiz-', ''))).toLocaleString('ko-KR') : '저장 일시 정보 없음'}
-  </p>
+    🕒 ${q.id ? new Date(Number(q.id.split('-')[1])).toLocaleString('ko-KR') : '저장 일시 정보 없음'}
+</p>
   <p style='color:var(--danger-color);font-weight:bold'>❌ 내 답: ${q.user_answer_text || '-'}</p>
   <p style='color:var(--success-color);font-weight:bold'>✅ 정답: ${correctText}</p>
   <div style='background-color:#fff3cd;padding:10px;border-radius:5px;margin-top:10px'>
