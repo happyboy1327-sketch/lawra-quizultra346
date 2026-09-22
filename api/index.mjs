@@ -18,8 +18,7 @@ const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = 'mistral-medium-latest';
 
 const client = new Mistral({
-  apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
-});
+  apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
 
 const app = express();
 app.use(express.json());
