@@ -318,6 +318,29 @@ app.post("/api/lawquizzes/new", async (req, res) => {
   }
 });
 
+app.get("/api/mistral-models", async (req, res) => {
+  try {
+    const response = await axios.get("https://api.mistral.ai/v1/models", {
+      headers: {
+        Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}`,
+      },
+    });
+
+    const models = Array.isArray(response.data?.data)
+      ? response.data.data.map((model) => model.id).filter(Boolean)
+      : [];
+
+    return res.json({ models });
+  } catch (err) {
+    console.error("Mistral 모델 목록 조회 오류:", err.message);
+
+    return res.status(err?.response?.status || 500).json({
+      error: "Mistral 모델 목록 조회 실패",
+      message: err?.response?.data?.message || err.message,
+    });
+  }
+});
+
 app.use(express.static(path.join(__dirname, "..")));
 
 app.get("/", (req, res) => {
