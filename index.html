@@ -105,6 +105,10 @@ function startQuizFlow() {
   updateQuizUI();
 }
 
+function formatBold(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 // 퀴즈 UI 업데이트
 function updateQuizUI() {
   if (currentQuizIndex >= allQuizzes.length) {
@@ -121,7 +125,7 @@ function updateQuizUI() {
   document.getElementById('current-quiz-index').textContent = currentQuizIndex + 1;
   document.getElementById('total-quiz-count').textContent = allQuizzes.length;
   document.getElementById('question-text').innerHTML = 
-    `<span style="color: var(--secondary-color); font-size: 0.9em;">(${quiz.category})</span><br>${quiz.question}`;
+  `<span style="color: var(--secondary-color); font-size: 0.9em;">(${quiz.category})</span><br>${formatBold(quiz.question)}`;
   
   const container = document.getElementById('options-container');
   container.innerHTML = '';
@@ -173,7 +177,7 @@ function checkAnswer(selectedBtn, quiz) {
   });
   
   // 해설 표시
-  document.getElementById('explanation-content').textContent = quiz.explanation;
+  document.getElementById('explanation-content').textContent = ${formatBold(quiz.explanation)};
   document.getElementById('explanation-area').style.display = 'block';
   
   // 다음 버튼 표시
