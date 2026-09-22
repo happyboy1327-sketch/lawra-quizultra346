@@ -175,7 +175,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 
 출력 형식:
 {
-  "id": "quiz-${Date.now()}-${Math.floor(Math.random() * 1000)}",
+  "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
   "question": "[질문 내용]",
   "options": [
