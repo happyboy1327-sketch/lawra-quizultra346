@@ -209,14 +209,25 @@ async function generateQuiz(article) {
     return quiz;
   } catch (err) {
     if (isRateLimitError(err)) {
-      const headers = err?.response?.headers || err?.headers || {};
+      const headers = err?.headers || err?.response?.headers || {};
 
       console.error("=== Mistral 429 Rate Limit Headers ===");
-      console.error("Retry-After:", headers["retry-after"] ?? "없음");
 
-      for (const [key, value] of Object.entries(headers)) {
-        if (key.toLowerCase().startsWith("x-ratelimit-")) {
-          console.error(`${key}: ${value}`);
+      if (typeof headers.get === "function") {
+        console.error("Retry-After:", headers.get("retry-after") ?? "없음");
+
+        for (const [key, value] of headers.entries()) {
+          if (key.toLowerCase().startsWith("x-ratelimit-")) {
+            console.error(`${key}: ${value}`);
+          }
+        }
+      } else {
+        console.error("Retry-After:", headers["retry-after"] ?? "없음");
+
+        for (const [key, value] of Object.entries(headers)) {
+          if (key.toLowerCase().startsWith("x-ratelimit-")) {
+            console.error(`${key}: ${value}`);
+          }
         }
       }
 
