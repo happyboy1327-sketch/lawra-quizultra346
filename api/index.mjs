@@ -221,42 +221,25 @@ async function generateQuiz(article) {
 }
 
 async function generateOneQuiz(law, number) {
-  const MAX_ATTEMPTS = 3;
+  console.log(`문제 ${number}: 1회 생성, 법령: ${law.lawName}`);
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    console.log(`문제 ${number}: 시도 ${attempt}/${MAX_ATTEMPTS}, 법령: ${law.lawName}`);
+  // 문제 1개당 법령 API는 정확히 1회 호출
+  const article = await fetchRandomArticle(law);
 
-    const article = await fetchRandomArticle(law);
-
-    if (!article) {
-      continue;
-    }
-
-    try {
-      const quiz = await generateQuiz(article);
-
-      if (quiz) {
-        return quiz;
-      }
-    } catch (err) {
-      if (!err?.isRateLimit) {
-        throw err;
-      }
-
-      if (attempt === MAX_ATTEMPTS) {
-        console.warn(`문제 ${number}: 429 재시도 한도 도달`);
-        break;
-      }
-
-      const delay =
-        Math.min(5000 * (2 ** (attempt - 1)), 30000) +
-        Math.floor(Math.random() * 1000);
-
-      console.warn(`문제 ${number}: ${(delay / 1000).toFixed(1)}초 후 재시도`);
-      await sleep(delay);
-    }
+  if (!article) {
+    console.warn(`문제 ${number}: 법령 API에서 조문을 가져오지 못했습니다.`);
+    return null;
   }
 
+  // 문제 1개당 Mistral API는 정확히 1회 호출
+  const quiz = await generateQuiz(article);
+
+  if (quiz) {
+    console.log(`문제 ${number} 생성 완료`);
+    return quiz;
+  }
+
+  console.warn(`문제 ${number}: Mistral 1회 호출로 생성 실패`);
   return null;
 }
 
