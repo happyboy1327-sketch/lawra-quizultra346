@@ -14,7 +14,7 @@ import axios from 'axios';
 dotenv.config();
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
-const MODEL = "mistral-small-latest";
+const MODEL = "mistral-medium-latest";
 const mistral = new Mistral({
   apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
 });
