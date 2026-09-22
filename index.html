@@ -262,7 +262,7 @@ function handleEnterReviewMode() {
     const div = document.createElement('div');
     div.className = 'review-item';
     div.innerHTML = `
-  <h3 style="color:var(--primary-color)">${idx + 1}. ${q.question}</h3>
+  <h3 style="color:var(--primary-color)">${idx + 1}. ${formatBold(q.question)}</h3>
   <p style="color:#6c757d;font-size:0.9em;margin:5px 0 15px">
     🕒 ${q.id ? new Date(Number(q.id.replace('quiz-', ''))).toLocaleString('ko-KR') : '저장 일시 정보 없음'}
   </p>
