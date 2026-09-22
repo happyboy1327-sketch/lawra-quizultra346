@@ -269,7 +269,7 @@ function handleEnterReviewMode() {
   <p style='color:var(--danger-color);font-weight:bold'>❌ 내 답: ${q.user_answer_text || '-'}</p>
   <p style='color:var(--success-color);font-weight:bold'>✅ 정답: ${correctText}</p>
   <div style='background-color:#fff3cd;padding:10px;border-radius:5px;margin-top:10px'>
-    <strong>📝 해설:</strong><br>${q.explanation}
+    <strong>📝 해설:</strong><br>${formatBold(q.explanation)}
   </div>
 `;
     list.appendChild(div);
