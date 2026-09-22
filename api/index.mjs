@@ -209,6 +209,14 @@ async function generateQuiz(article) {
 
   } catch (e) {
     console.error("Mistral API 오류:", e.message);
+
+    // Mistral 429는 일시적인 rate limit이므로 상위 재시도 로직에서 대기 후 재시도
+    if (/Status 429|status.?code.?429|rate.?limit/i.test(e?.message || "")) {
+      const rateLimitError = new Error("Mistral rate limit (429)");
+      rateLimitError.isRateLimit = true;
+      throw rateLimitError;
+    }
+
     return null;
   }
 }
@@ -252,7 +260,19 @@ app.post("/api/lawquizzes/new", async (req, res) => {
         const contentStr = String(article.content || '');
         const cleanContent = contentStr.replace(/\s+/g, ' ').trim();
 
-        const rawQuiz = await generateQuiz({ ...article, content: cleanContent });
+        let rawQuiz;
+        try {
+          rawQuiz = await generateQuiz({ ...article, content: cleanContent });
+        } catch (e) {
+          if (e.isRateLimit) {
+            const retryDelay = 5000 * (attempt + 1);
+            console.warn(`Mistral 429 감지: ${retryDelay / 1000}초 후 재시도합니다. (문제 ${i + 1}, 시도 ${attempt + 1}/${MAX_RETRIES})`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            attempt--;
+            continue;
+          }
+          throw e;
+        }
 
         console.log(`문제 ${i + 1}, 시도 ${attempt + 1}, rawQuiz:`, rawQuiz ? '성공' : '실패');
 
