@@ -8,7 +8,7 @@
   ],
   "functions": {
     "api/index.mjs": {
-      "maxDuration": 75
+      "maxDuration": 165
     }
   }
 }
