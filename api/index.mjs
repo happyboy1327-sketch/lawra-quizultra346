@@ -7,11 +7,6 @@ import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { Mistral } from "@mistralai/mistralai";
 
-const mistral = new Mistral({
-  apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
-});
-
-
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,6 +15,9 @@ dotenv.config();
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = "mistral-small-latest";
+const mistral = new Mistral({
+  apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
+});
 
 
 
