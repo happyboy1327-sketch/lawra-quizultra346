@@ -268,7 +268,6 @@ app.post("/api/lawquizzes/new", async (req, res) => {
             const retryDelay = 5000 * (attempt + 1);
             console.warn(`Mistral 429 감지: ${retryDelay / 1000}초 후 재시도합니다. (문제 ${i + 1}, 시도 ${attempt + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
-            attempt--;
             continue;
           }
           throw e;
