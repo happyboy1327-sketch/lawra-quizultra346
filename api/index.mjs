@@ -195,6 +195,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 
     const response = await client.chat.complete({
       model: MODEL,
+      responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
     });
 
