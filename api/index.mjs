@@ -66,6 +66,34 @@ const VALID_LAW_IDS = [
 
 const LAW_API_BASE_URL = "https://www.law.go.kr/DRF";
 
+const GENERATION_LOCK_ID = "_quiz_generation_lock";
+const GENERATION_LOCK_TTL = 15 * 60 * 1000;
+
+async function acquireGenerationLock() {
+  const lockRef = db.collection("law_quizzes").doc(GENERATION_LOCK_ID);
+  const now = Date.now();
+  const expiresAt = now + GENERATION_LOCK_TTL;
+
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(lockRef);
+    const current = snapshot.exists ? snapshot.data() : null;
+
+    if (current?.expiresAt && current.expiresAt > now) {
+      throw new Error("QUIZ_GENERATION_LOCKED");
+    }
+
+    transaction.set(lockRef, { lockedAt: now, expiresAt });
+  });
+}
+
+async function releaseGenerationLock() {
+  try {
+    await db.collection("law_quizzes").doc(GENERATION_LOCK_ID).delete();
+  } catch (err) {
+    console.error("퀴즈 생성 잠금 해제 오류:", err.message);
+  }
+}
+
 // 법령 조문 랜덤 추출 함수
 async function fetchLawArticles(lawId) {
   console.log('fetchLawArticles 호출, lawId:', lawId);
@@ -238,7 +266,12 @@ app.get("/api/lawquizzes/latest", async (req, res) => {
 
 // 새 퀴즈 생성
 app.post("/api/lawquizzes/new", async (req, res) => {
+  let generationLockAcquired = false;
+
   try {
+    await acquireGenerationLock();
+    generationLockAcquired = true;
+
     const MAX_RETRIES = 3;
     const newQuizzes = [];
 
@@ -265,7 +298,12 @@ app.post("/api/lawquizzes/new", async (req, res) => {
           rawQuiz = await generateQuiz({ ...article, content: cleanContent });
         } catch (e) {
           if (e.isRateLimit) {
-            const retryDelay = 5000 * (attempt + 1);
+            if (attempt + 1 >= MAX_RETRIES) {
+              console.warn(`Mistral 429 지속 발생: 문제 ${i + 1}의 재시도를 종료합니다.`);
+              break;
+            }
+
+            const retryDelay = Math.min(5000 * (2 ** attempt), 30000) + Math.floor(Math.random() * 1000);
             console.warn(`Mistral 429 감지: ${retryDelay / 1000}초 후 재시도합니다. (문제 ${i + 1}, 시도 ${attempt + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             continue;
@@ -317,8 +355,19 @@ app.post("/api/lawquizzes/new", async (req, res) => {
     res.json(newQuizzes);
 
   } catch (e) {
+    if (e.message === "QUIZ_GENERATION_LOCKED") {
+      return res.status(429).json({
+        error: "퀴즈 생성 중",
+        message: "다른 퀴즈 생성 요청이 진행 중입니다. 잠시 후 다시 시도하세요."
+      });
+    }
+
     console.error("퀴즈 생성/저장 오류:", e);
     res.status(500).json({ error: e.message });
+  } finally {
+    if (generationLockAcquired) {
+      await releaseGenerationLock();
+    }
   }
 });
   
