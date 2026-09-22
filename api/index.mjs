@@ -15,9 +15,9 @@ console.log("LAW_QUIZ_MISTRAL_KEY:", process.env.LAW_QUIZ_MISTRAL_KEY ? "존재"
 console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음");
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
-const MODEL = "mistral-large-latest";
+const MODEL = 'mistral-medium-latest';
 
-const mistral = new Mistral({
+const client = new Mistral({
   apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
 });
 
@@ -182,7 +182,7 @@ async function generateQuiz(article) {
 `;
 
   try {
-    const response = await mistral.chat.complete({
+    const response = await client.chat.complete({
       model: MODEL,
       messages: [{ role: "user", content: prompt }],
     });
