@@ -1,11 +1,17 @@
 console.log('=== 서버 시작 시 환경 변수 확인 ===');
 console.log('LAW_GOV_OC:', process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : '없음');
-console.log('LAW_QUIZ_GEMINI_KEY:', process.env.LAW_QUIZ_GEMINI_KEY ? '존재' : '없음');
+console.log('LAW_QUIZ_MISTRAL_KEY:', process.env.LAW_QUIZ_MISTRAL_KEY ? '존재' : '없음');
 console.log('FIREBASE_SERVICE_ACCOUNT_KEY:', process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? '존재' : '없음');import express from 'express';
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { GoogleGenAI } from '@google/genai';
+import { Mistral } from "@mistralai/mistralai";
+
+const mistral = new Mistral({
+  apiKey: process.env.MISTRAL_API_KEY ?? "",
+});
+
+
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,8 +19,7 @@ import axios from 'axios';
 dotenv.config();
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
-const MODEL = "gemini-2.5-flash";
-const client = new GoogleGenAI({ apiKey: process.env.LAW_QUIZ_GEMINI_KEY });
+const MODEL = "mistral-small-latest";
 
 
 console.log('client의 메서드들:', Object.getOwnPropertyNames(Object.getPrototypeOf(client)));
@@ -181,14 +186,19 @@ async function generateQuiz(article) {
 `;
 
     console.log('=== 디버깅 ===');
-    console.log('API 키:', process.env.LAW_QUIZ_GEMINI_KEY ? '존재' : '없음');
+    console.log('API 키:', process.env.LAW_QUIZ_MISTRAL_KEY ? '존재' : '없음');
     
-    const response = await client.models.generateContent({
+    const response = await mistral.chat.complete({
       model: MODEL,
-      contents: prompt
+      messages: [
+    {
+      role: "user",
+      content: prompt,
+    },
+  ]
     });
     
-    let responseText = response.text;
+    const responseText = response.choices[0].message.content;
     console.log('원본 응답:', responseText.substring(0, 300) + '...');
     
     // 마크다운 코드블록 제거
@@ -197,7 +207,7 @@ async function generateQuiz(article) {
     console.log('정제된 응답:', responseText.substring(0, 300) + '...');
 
     if (!responseText || responseText.trim() === '') {
-      console.error("Gemini 응답이 비어 있음");
+      console.error("mistral 응답이 비어 있음");
       return null;
     }
 
@@ -206,7 +216,7 @@ async function generateQuiz(article) {
     return quiz;
 
   } catch (e) {
-    console.error("Gemini API 오류:", e.message);
+    console.error("Mistral API 오류:", e.message);
     return null;
   }
 }
@@ -259,7 +269,7 @@ app.post("/api/lawquizzes/new", async (req, res) => {
           continue;
         }
 
-        // ✅ ID는 Gemini가 생성한 것 사용
+        // ✅ ID는 Mistral가 생성한 것 사용
         quizAttempt = rawQuiz;
         console.log(`문제 ${i + 1} 생성 완료:`, quizAttempt.id);
         break;
