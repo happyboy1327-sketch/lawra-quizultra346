@@ -1,59 +1,65 @@
-console.log('=== 서버 시작 시 환경 변수 확인 ===');
-console.log('LAW_GOV_OC:', process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : '없음');
-console.log('LAW_QUIZ_MISTRAL_KEY:', process.env.LAW_QUIZ_MISTRAL_KEY ? '존재' : '없음');
-console.log('FIREBASE_SERVICE_ACCOUNT_KEY:', process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? '존재' : '없음');import express from 'express';
-
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import express from "express";
+import { initializeApp, cert } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 import { Mistral } from "@mistralai/mistralai";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import axios from "axios";
 
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import axios from 'axios'; 
 dotenv.config();
+
+console.log("=== 서버 시작 시 환경 변수 확인 ===");
+console.log("LAW_GOV_OC:", process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : "없음");
+console.log("LAW_QUIZ_MISTRAL_KEY:", process.env.LAW_QUIZ_MISTRAL_KEY ? "존재" : "없음");
+console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음");
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = "mistral-large-latest";
+
 const mistral = new Mistral({
   apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
 });
 
-
-
 const app = express();
 app.use(express.json());
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Firebase Admin 초기화
 let db = null;
 let initializationError = null;
-let serviceAccountKey = null;
 
 try {
-  serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim())
-    : null;
+  const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
-  if (!serviceAccountKey) throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY 환경 변수 없음");
+  if (!rawKey) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY 환경 변수 없음");
+  }
 
-  const firebaseApp = initializeApp({ credential: cert(serviceAccountKey) });
+  const serviceAccountKey = JSON.parse(rawKey.trim());
+
+  const firebaseApp = initializeApp({
+    credential: cert(serviceAccountKey),
+  });
+
   db = getFirestore(firebaseApp);
   console.log("Firebase Admin SDK 초기화 성공");
 } catch (err) {
   console.error("Firebase Admin SDK 초기화 실패:", err.message);
-  db = null;
   initializationError = `Firebase Admin 초기화 실패: ${err.message}`;
 }
 
-// DB 확인 미들웨어
 app.use((req, res, next) => {
-  if (!db) return res.status(500).json({ error: "DB 연결 실패", message: initializationError });
+  if (!db) {
+    return res.status(500).json({
+      error: "DB 연결 실패",
+      message: initializationError,
+    });
+  }
   next();
 });
 
-// 랜덤 선택 가능한 법령 목록
 const VALID_LAW_IDS = [
   { lawId: "001444", lawName: "대한민국헌법" },
   { lawId: "001706", lawName: "민법" },
@@ -64,127 +70,99 @@ const VALID_LAW_IDS = [
   { lawId: "001206", lawName: "가사소송법" },
 ];
 
-const LAW_API_BASE_URL = "https://www.law.go.kr/DRF";
+const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
 
-const GENERATION_LOCK_ID = "_quiz_generation_lock";
-const GENERATION_LOCK_TTL = 15 * 60 * 1000;
-
-async function acquireGenerationLock() {
-  const lockRef = db.collection("law_quizzes").doc(GENERATION_LOCK_ID);
-  const now = Date.now();
-  const expiresAt = now + GENERATION_LOCK_TTL;
-
-  await db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(lockRef);
-    const current = snapshot.exists ? snapshot.data() : null;
-
-    if (current?.expiresAt && current.expiresAt > now) {
-      throw new Error("QUIZ_GENERATION_LOCKED");
-    }
-
-    transaction.set(lockRef, { lockedAt: now, expiresAt });
-  });
-}
-
-async function releaseGenerationLock() {
-  try {
-    await db.collection("law_quizzes").doc(GENERATION_LOCK_ID).delete();
-  } catch (err) {
-    console.error("퀴즈 생성 잠금 해제 오류:", err.message);
-  }
-}
-
-// 법령 조문 랜덤 추출 함수
 async function fetchLawArticles(lawId) {
-  console.log('fetchLawArticles 호출, lawId:', lawId);
-  console.log('OC_USER_ID:', OC_USER_ID ? '존재' : '없음');
-  
   if (!OC_USER_ID) {
-    console.error('LAW_GOV_OC 환경 변수가 없음!');
+    console.error("LAW_GOV_OC 환경 변수가 없음");
     return [];
   }
-  
+
   try {
-    const params = { OC: OC_USER_ID, type: 'JSON', target: 'eflaw', ID: lawId };
-    console.log('API 호출 URL:', `${LAW_API_BASE_URL}/lawService.do`);
-    console.log('API 파라미터:', params);
-    
-    const response = await axios.get(`${LAW_API_BASE_URL}/lawService.do`, { params });
-    
-    console.log('API 응답 상태:', response.status);
-    console.log('API 응답 데이터 구조:', Object.keys(response.data || {}));
-    
+    const response = await axios.get(LAW_API_URL, {
+      params: {
+        OC: OC_USER_ID,
+        type: "JSON",
+        target: "eflaw",
+        ID: lawId,
+      },
+    });
+
     const lawData = response.data;
-    
-    // ✅ 응답 구조 확인
-    if (!lawData) {
-      console.error('lawData가 undefined');
+    const joData = lawData?.["법령"]?.["조문"]?.["조문단위"];
+
+    if (!joData) {
+      console.error("법령 조문 데이터 없음");
       return [];
     }
-    
-    if (!lawData['법령']) {
-      console.error('lawData["법령"]이 undefined. 전체 응답:', JSON.stringify(lawData, null, 2));
-      return [];
-    }
-    
-    if (!lawData['법령']['조문']) {
-      console.error('lawData["법령"]["조문"]이 undefined');
-      return [];
-    }
-    
-    const joData = lawData['법령']['조문']['조문단위'] || [];
-    const articles = Array.isArray(joData) ? joData : [joData].filter(j => j);
-    
-    console.log(`✅ ${articles.length}개 조문 추출 성공`);
-    
-    return articles.map(jo => ({
-      num: jo['조문번호'],
-      content: jo['조문내용'],
-      lawName: lawData['법령']['기본정보']['법령명_한글']
-    }));
+
+    const articles = Array.isArray(joData) ? joData : [joData];
+    const lawName = lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
+
+    return articles
+      .filter(Boolean)
+      .map((article) => ({
+        num: article["조문번호"],
+        content: article["조문내용"],
+        lawName,
+      }));
   } catch (err) {
-    console.error(`fetchLawArticles 오류 (ID: ${lawId}):`, err.message);
-    console.error('전체 에러:', err);
+    console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
   }
 }
 
-// 랜덤 기사 선택
 async function fetchRandomArticle(law) {
   const articles = await fetchLawArticles(law.lawId);
-  if (!articles || articles.length === 0) {
-    console.warn('기사 없음:', law);
+
+  if (articles.length === 0) {
+    console.warn("사용 가능한 조문 없음:", law.lawName);
     return null;
   }
-  const selected = articles[Math.floor(Math.random() * articles.length)];
-  console.log('선택된 article:', selected);
-  return selected;
+
+  return articles[Math.floor(Math.random() * articles.length)];
 }
 
+function isRateLimitError(error) {
+  const message = String(error?.message || "");
+
+  return (
+    error?.statusCode === 429 ||
+    error?.status === 429 ||
+    error?.response?.status === 429 ||
+    /status\s*429|status.?code.?429|rate.?limit|rate limited/i.test(message)
+  );
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function generateQuiz(article) {
-  console.log("generateQuiz 호출 시작, article:", article);
+  if (!article?.lawName || !article?.num) {
+    console.error("유효하지 않은 article:", article);
+    return null;
+  }
 
-  try {
-    if (!article || !article.lawName || !article.num) {
-      console.error("유효하지 않은 article:", article);
-      return null;
-    }
-    const contentStr = String(article.content || '');
-    const cleanContent = contentStr.replace(/"/g, "'");
-    
-    const prompt = `
+  const content = String(article.content || "")
+    .replace(/"/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const prompt = `
 다음 한국 법령 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요.
 
 법령명: ${article.lawName}
 조문번호: 제${article.num}조
-조문내용: ${cleanContent}
+조문내용: ${content}
 
-위 조문의 내용을 바탕으로 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 조항의 내용을 묻는 문제나 조항의 개정일, 삭제 여부를 묻는 문제는 절대로 출제하지 마세요.
-사례를 제시하여 현행 법령을 기준으로 판단하는 문제나 생활 법률 상식 문제를 출제하세요. 인물의 가명은 A씨, B씨, 김 씨, 박 씨 등으로 표기하세요.
-**난이도는 평이해야 하며, 문제의 질문은 80자 이내로 제한합니다.** 정답 1개와 그럴듯한 오답 3개를 만드세요. 실제 퀴즈 내용을 JSON 형식으로 작성하세요.
+위 조문의 내용을 바탕으로 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요.
+조항의 내용을 묻는 문제나 조항의 개정일, 삭제 여부를 묻는 문제는 절대로 출제하지 마세요.
+사례를 제시하여 현행 법령을 기준으로 판단하는 문제나 생활 법률 상식 문제를 출제하세요.
+인물의 가명은 A씨, B씨, 김 씨, 박 씨 등으로 표기하세요.
+난이도는 평이해야 하며, 문제의 질문은 80자 이내로 제한합니다.
+정답 1개와 그럴듯한 오답 3개를 만드세요.
 
-**중요: 반드시 순수 JSON만 출력하세요. 마크다운 코드블록이나 설명 없이 JSON만 출력하세요.**
+반드시 순수 JSON만 출력하세요.
+마크다운 코드블록이나 설명 없이 JSON만 출력하세요.
 
 출력 형식:
 {
@@ -201,190 +179,167 @@ async function generateQuiz(article) {
   "explanation": "[detailed explanation]",
   "timer_sec": 15
 }
-
-위 형식으로 실제 퀴즈를 JSON으로만 출력하세요.
 `;
 
-    console.log('=== 디버깅 ===');
-    console.log('API 키:', process.env.LAW_QUIZ_MISTRAL_KEY ? '존재' : '없음');
-    
+  try {
     const response = await mistral.chat.complete({
       model: MODEL,
-      messages: [
-    {
-      role: "user",
-      content: prompt,
-    },
-  ]
+      messages: [{ role: "user", content: prompt }],
     });
-    
-    let responseText = response.choices[0].message.content;
-    console.log('원본 응답:', responseText.substring(0, 300) + '...');
-    
-    // 마크다운 코드블록 제거
-    responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
-    console.log('정제된 응답:', responseText.substring(0, 300) + '...');
 
-    if (!responseText || responseText.trim() === '') {
-      console.error("mistral 응답이 비어 있음");
+    let responseText = response?.choices?.[0]?.message?.content;
+
+    if (!responseText || typeof responseText !== "string") {
+      console.error("Mistral 응답이 비어 있음");
       return null;
     }
 
+    responseText = responseText
+      .replace(/^\s*```json\s*/i, "")
+      .replace(/^\s*```\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
+
     const quiz = JSON.parse(responseText);
+
+    if (!quiz || typeof quiz !== "object") {
+      return null;
+    }
+
     console.log("퀴즈 생성 완료:", quiz.id);
     return quiz;
-
-  } catch (e) {
-    console.error("Mistral API 오류:", e.message);
-
-    // Mistral 429는 일시적인 rate limit이므로 상위 재시도 로직에서 대기 후 재시도
-    if (/Status 429|status.?code.?429|rate.?limit/i.test(e?.message || "")) {
+  } catch (err) {
+    if (isRateLimitError(err)) {
       const rateLimitError = new Error("Mistral rate limit (429)");
       rateLimitError.isRateLimit = true;
       throw rateLimitError;
     }
 
+    console.error("Mistral API 오류:", err.message);
     return null;
   }
 }
 
-// --- API 엔드포인트 ---
-// 최신 퀴즈
-app.get("/api/lawquizzes/latest", async (req, res) => {
-  try {
-    const snapshot = await db.collection("law_quizzes").orderBy("createdAt", "desc").limit(1).get();
-    if (snapshot.empty) return res.json([]);
-    const doc = snapshot.docs[0].data();
-    const quizzes = doc.quizzes ? Array.isArray(doc.quizzes) ? doc.quizzes : Object.values(doc.quizzes) : [];
-    res.json(quizzes);
-  } catch (e) {
-    console.error("latest 조회 오류:", e);
-    res.status(500).json({ error: e.message });
-  }
-});
+async function generateOneQuiz(law, number) {
+  const MAX_ATTEMPTS = 3;
 
-// 새 퀴즈 생성
-app.post("/api/lawquizzes/new", async (req, res) => {
-  let generationLockAcquired = false;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    console.log(`문제 ${number}: 시도 ${attempt}/${MAX_ATTEMPTS}, 법령: ${law.lawName}`);
 
-  try {
-    await acquireGenerationLock();
-    generationLockAcquired = true;
+    const article = await fetchRandomArticle(law);
 
-    const MAX_RETRIES = 3;
-    const newQuizzes = [];
+    if (!article) {
+      continue;
+    }
 
-    console.log('=== 새 퀴즈 생성 시작 ===');
+    try {
+      const quiz = await generateQuiz(article);
 
-    for (let i = 0; i < 5; i++) {
-      let quizAttempt = null;
-      const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
-      
-      console.log(`문제 ${i + 1} 생성 시작, 법령:`, law.lawName);
+      if (quiz) {
+        return quiz;
+      }
+    } catch (err) {
+      if (!err?.isRateLimit) {
+        throw err;
+      }
 
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        const article = await fetchRandomArticle(law);
-        if (!article) {
-          console.warn(`문제 ${i + 1}, 시도 ${attempt + 1}: article 없음`);
-          continue;
-        }
-
-        const contentStr = String(article.content || '');
-        const cleanContent = contentStr.replace(/\s+/g, ' ').trim();
-
-        let rawQuiz;
-        try {
-          rawQuiz = await generateQuiz({ ...article, content: cleanContent });
-        } catch (e) {
-          if (e.isRateLimit) {
-            if (attempt + 1 >= MAX_RETRIES) {
-              console.warn(`Mistral 429 지속 발생: 문제 ${i + 1}의 재시도를 종료합니다.`);
-              break;
-            }
-
-            const retryDelay = Math.min(5000 * (2 ** attempt), 30000) + Math.floor(Math.random() * 1000);
-            console.warn(`Mistral 429 감지: ${retryDelay / 1000}초 후 재시도합니다. (문제 ${i + 1}, 시도 ${attempt + 1}/${MAX_RETRIES})`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-            continue;
-          }
-          throw e;
-        }
-
-        console.log(`문제 ${i + 1}, 시도 ${attempt + 1}, rawQuiz:`, rawQuiz ? '성공' : '실패');
-
-        if (!rawQuiz) {
-          console.warn(`문제 ${i + 1}, 시도 ${attempt + 1} 실패, 다음 시도`);
-          continue;
-        }
-
-        // ✅ ID는 Mistral가 생성한 것 사용
-        quizAttempt = rawQuiz;
-        console.log(`문제 ${i + 1} 생성 완료:`, quizAttempt.id);
+      if (attempt === MAX_ATTEMPTS) {
+        console.warn(`문제 ${number}: 429 재시도 한도 도달`);
         break;
       }
 
-      if (quizAttempt) {
-        newQuizzes.push(quizAttempt);
-        console.log(`✅ 문제 ${i + 1} 추가됨`);
+      const delay =
+        Math.min(5000 * (2 ** (attempt - 1)), 30000) +
+        Math.floor(Math.random() * 1000);
+
+      console.warn(`문제 ${number}: ${(delay / 1000).toFixed(1)}초 후 재시도`);
+      await sleep(delay);
+    }
+  }
+
+  return null;
+}
+
+app.get("/api/lawquizzes/latest", async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("law_quizzes")
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.json([]);
+    }
+
+    const data = snapshot.docs[0].data();
+
+    const quizzes = Array.isArray(data.quizzes)
+      ? data.quizzes
+      : data.quizzes
+        ? Object.values(data.quizzes)
+        : [];
+
+    return res.json(quizzes);
+  } catch (err) {
+    console.error("최신 퀴즈 조회 오류:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/lawquizzes/new", async (req, res) => {
+  try {
+    console.log("=== 새 퀴즈 세트 생성 시작 ===");
+
+    const newQuizzes = [];
+
+    for (let i = 0; i < 5; i++) {
+      const law =
+        VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
+
+      const quiz = await generateOneQuiz(law, i + 1);
+
+      if (quiz) {
+        newQuizzes.push(quiz);
+        console.log(`문제 ${i + 1} 생성 완료`);
       } else {
-        console.warn(`❌ 문제 ${i + 1} 생성 실패, 다음 문제로 넘어감`);
+        console.warn(`문제 ${i + 1} 생성 실패`);
       }
     }
 
-    console.log('=== 퀴즈 생성 완료 ===');
-    console.log('생성된 퀴즈 개수:', newQuizzes.length);
+    console.log(`=== 새 퀴즈 세트 생성 완료: ${newQuizzes.length}/5 ===`);
 
     if (newQuizzes.length === 0) {
-      return res.status(400).json({ 
-        error: '퀴즈 생성 실패', 
-        message: '모든 퀴즈 생성 시도가 실패했습니다.' 
+      return res.status(400).json({
+        error: "퀴즈 생성 실패",
+        message: "모든 퀴즈 생성 시도가 실패했습니다.",
       });
     }
 
-    // ✅ 퀴즈 세트 ID 생성
-    const quizSetId = `${Date.now()}`;
+    const quizSetId = String(Date.now());
 
-    // ✅ Firestore 문서 ID를 퀴즈 세트 ID로 지정
     await db.collection("law_quizzes").doc(quizSetId).set({
       createdAt: Date.now(),
-      quizzes: newQuizzes
+      quizzes: newQuizzes,
     });
-    console.log('Firestore 저장 완료, 문서 ID:', quizSetId);
 
-    res.json(newQuizzes);
+    console.log("Firestore 저장 완료:", quizSetId);
 
-  } catch (e) {
-    if (e.message === "QUIZ_GENERATION_LOCKED") {
-      return res.status(429).json({
-        error: "퀴즈 생성 중",
-        message: "다른 퀴즈 생성 요청이 진행 중입니다. 잠시 후 다시 시도하세요."
-      });
-    }
+    return res.json(newQuizzes);
+  } catch (err) {
+    console.error("새 퀴즈 세트 생성 중 오류 발생:", err);
 
-    console.error("퀴즈 생성/저장 오류:", e);
-    res.status(500).json({ error: e.message });
-  } finally {
-    if (generationLockAcquired) {
-      await releaseGenerationLock();
-    }
+    return res.status(500).json({
+      error: "퀴즈 생성 오류",
+      message: err?.message || "알 수 없는 오류",
+    });
   }
 });
-  
-// --- 로컬 테스트용 서버 ---
-//if (process.env.NODE_ENV !== "production") {
-  //const PORT = process.env.PORT || 5000;
-  //app.listen(PORT, () => console.log(`🚀 서버 실행 중: http://localhost:${PORT}`));//
-//
 
-app.use(express.static(path.join(__dirname, '..')));
+app.use(express.static(path.join(__dirname, "..")));
 
-// 👇 index.html 제공 (새로 추가)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../index.html'));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../index.html"));
 });
 
 export default app;
-
-
-
