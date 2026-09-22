@@ -209,6 +209,17 @@ async function generateQuiz(article) {
     return quiz;
   } catch (err) {
     if (isRateLimitError(err)) {
+      const headers = err?.response?.headers || err?.headers || {};
+
+      console.error("=== Mistral 429 Rate Limit Headers ===");
+      console.error("Retry-After:", headers["retry-after"] ?? "없음");
+
+      for (const [key, value] of Object.entries(headers)) {
+        if (key.toLowerCase().startsWith("x-ratelimit-")) {
+          console.error(`${key}: ${value}`);
+        }
+      }
+
       const rateLimitError = new Error("Mistral rate limit (429)");
       rateLimitError.isRateLimit = true;
       throw rateLimitError;
