@@ -8,7 +8,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { Mistral } from "@mistralai/mistralai";
 
 const mistral = new Mistral({
-  apiKey: process.env.MISTRAL_API_KEY ?? "",
+  apiKey: process.env.LAW_QUIZ_MISTRAL_KEY ?? "",
 });
 
 
@@ -21,12 +21,6 @@ dotenv.config();
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = "mistral-small-latest";
 
-
-console.log('client의 메서드들:', Object.getOwnPropertyNames(Object.getPrototypeOf(client)));
-console.log('client의 키들:', Object.keys(client));
-console.log('client 타입:', typeof client);
-console.log("client.responses:", client.responses);
-console.log("client:", client);
 
 
 const app = express();
@@ -198,7 +192,7 @@ async function generateQuiz(article) {
   ]
     });
     
-    const responseText = response.choices[0].message.content;
+    let responseText = response.choices[0].message.content;
     console.log('원본 응답:', responseText.substring(0, 300) + '...');
     
     // 마크다운 코드블록 제거
