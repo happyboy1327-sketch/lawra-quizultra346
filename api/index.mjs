@@ -308,7 +308,7 @@ async function generateValidQuizSlot(slotIndex, maxTries = 2) {
     const quiz = await generateQuiz(article);
     if (!quiz) continue;
 
-    const validation = await validateSingleQuiz(quiz);
+    const validation = await validateSingleQuiz(quiz, article);
     if (validation && validation.valid === true) {
       console.log(`[슬롯 ${slotIndex}] 문제 생성 및 검증 성공 (시도 ${attempt})`);
       return quiz;
