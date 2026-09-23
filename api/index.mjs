@@ -192,7 +192,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 조문번호: 제${article.num}조
 조문내용: ${content}
 
-위 조문의 내용을 바탕으로 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요.
+위 조문의 내용을 바탕으로 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 생각 좀 하고 만들어 씨발년아.
 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적 법률 사례 문제를 만드세요.
 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하세요.
 
@@ -230,7 +230,7 @@ is_correct는 신경 쓰지 마세요 — 서버 코드가 question_type과 is_t
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }
                 ],
-      temperature: 0.05,
+      temperature: 0.01,
       reasoning_effort: "high"
     });
 
