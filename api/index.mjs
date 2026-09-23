@@ -200,7 +200,7 @@ async function generateQuiz(article, retriesLeft = 2) {
       messages: [{ role: "user", content: prompt }
                 ],
       temperature: 0.05,
-      reasoning_effort= 'high',
+      reasoning_effort: "high"
     });
 
     let responseText = response?.choices?.[0]?.message?.content;
