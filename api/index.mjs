@@ -315,15 +315,35 @@ return normalizedQuiz;
 
 async function validateSingleQuiz(quiz, article) {
   const sourceText = String(article?.content || "")
-    .replace(/"/g, "'")
     .replace(/\s+/g, " ")
     .trim();
-  const systemPrompt = `
+
+  console.log("[검증 시작]", {
+    lawName: article?.lawName,
+    articleNumber: article?.num,
+    sourceLength: sourceText.length,
+    sourcePreview: sourceText.slice(0, 200),
+  });
+
+  if (!sourceText) {
+    return {
+      valid: false,
+      reason: "원문 누락",
+    };
+  }
+
+  const validationPayload = {
+    source: {
+      lawName: String(article?.lawName || ""),
+      articleNumber: String(article?.num || ""),
+      content: sourceText,
+    },
+    quiz,
+  };
+
+  const userPrompt = `
 당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 아래 원문 조문을 바탕으로 검증하세요.
-[원문 조문]
-법령명: ${article?.lawName || "(알 수 없음)"}
-조문번호: 제${article?.num || "?"}조
-조문내용: ${sourceText || "(원문 없음)"}
+
 
 ★★★ 가장 중요한 규칙 ★★★
 - 질문·보기·해설에 등장하는 모든 법적 근거는 반드시 위 [원문 조문]과 대조해서 판단하십시오.
@@ -348,6 +368,8 @@ async function validateSingleQuiz(quiz, article) {
   "valid": boolean,
   "reason": string
 }
+
+[원문 조문] : ${JSON.stringify(validationPayload, null, 2)}
 `;
 
   try {
@@ -356,16 +378,13 @@ async function validateSingleQuiz(quiz, article) {
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify(quiz) }
-      ],
+      messages: [{ role: "user", content: userPrompt }],
       temperature: 0,
     });
 
     let resultText = response?.choices?.[0]?.message?.content;
 
-    if (!resultText) {
+    if (!resultText || typeof resultText !== "string") {
       return { valid: false, reason: "검증 응답 비어 있음" };
     }
 
@@ -375,11 +394,25 @@ async function validateSingleQuiz(quiz, article) {
       .replace(/\s*```\s*$/i, "")
       .trim();
 
-    return JSON.parse(resultText);
+    const parsed = JSON.parse(resultText);
+
+    if (typeof parsed.valid !== "boolean") {
+      return {
+        valid: false,
+        reason: "검증 결과 형식 오류",
+      };
+    }
+
+    return {
+      valid: parsed.valid,
+      reason: String(parsed.reason || ""),
+    };
   } catch (err) {
     console.error("Mistral 검증 호출 오류:", err.message);
-    // 검증 API 실패 시 퀴즈 생성 실패로 처리하지 않고 완화 처리
-    return { valid: true, reason: "검증 통과 (기본값)" };
+    return {
+      valid: true,
+      reason: "검증 API 호출 실패로 임시 통과",
+    };
   }
 }
 
