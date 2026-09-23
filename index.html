@@ -204,11 +204,12 @@ function checkAnswer(selectedBtn, quiz) {
   });
   
   // 해설 표시
-  const explanationText = quiz.explanation && String(quiz.explanation).trim()
-    ? quiz.explanation
-    : '해설이 아직 준비되지 않았습니다.';
-  document.getElementById('explanation-content').innerHTML = formatBold(explanationText);
-  document.getElementById('explanation-area').style.display = 'block';
+  // 해설 표시
+const explanationText = quiz.explanation && String(quiz.explanation).trim()
+  ? displayText(quiz.explanation)
+  : '해설이 아직 준비되지 않았습니다.';
+document.getElementById('explanation-content').innerHTML = formatBold(explanationText);
+document.getElementById('explanation-area').style.display = 'block';
   
   // 다음 버튼 표시
   const nextBtn = document.getElementById('next-button');
