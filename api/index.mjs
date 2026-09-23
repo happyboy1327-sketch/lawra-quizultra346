@@ -350,7 +350,7 @@ async function validateSingleQuiz(quiz, article) {
     await throttleMistralCall();
 
     const response = await client.chat.complete({
-      model: MODEL,
+      model: "ministral-3b-2512",
       responseFormat: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
