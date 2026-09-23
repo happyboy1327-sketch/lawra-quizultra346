@@ -170,6 +170,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적 법률 사례 문제를 만드세요.
 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하세요.
 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
+만약 전혀 다른 조항인데도 불구하고 맞는것처럼 둔갑할 경우 false처리하시오.
 
 반드시 순수 JSON만 출력하세요.
 
@@ -196,7 +197,10 @@ async function generateQuiz(article, retriesLeft = 2) {
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: prompt }
+                ],
+      temperature: 0.05,
+      reasoning_effort= 'high',
     });
 
     let responseText = response?.choices?.[0]?.message?.content;
