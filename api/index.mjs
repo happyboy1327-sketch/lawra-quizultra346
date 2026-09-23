@@ -153,6 +153,80 @@ async function throttleMistralCall() {
   lastMistralCallAt = Date.now();
 }
 
+function normalizeText(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (value == null) {
+    return "";
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(normalizeText)
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (typeof value === "object") {
+    // 모델이 { text: "..." }, { content: "..." } 형태로 반환하는 경우
+    const preferredKeys = ["text", "content", "explanation", "reason", "detail"];
+
+    for (const key of preferredKeys) {
+      if (value[key] != null) {
+        const text = normalizeText(value[key]);
+        if (text) return text;
+      }
+    }
+
+    // 위 필드가 없으면 객체 전체를 안전한 JSON 문자열로 변환
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+function normalizeQuiz(quiz) {
+  if (!quiz || typeof quiz !== "object") {
+    return null;
+  }
+
+  const normalized = {
+    ...quiz,
+    id: normalizeText(quiz.id),
+    category: normalizeText(quiz.category),
+    question: normalizeText(quiz.question),
+    answer: normalizeText(quiz.answer),
+    explanation: normalizeText(quiz.explanation),
+    timer_sec: Number(quiz.timer_sec) || 15,
+    options: Array.isArray(quiz.options)
+      ? quiz.options.map((option) => ({
+          text: normalizeText(option?.text ?? option),
+          is_correct: option?.is_correct === true,
+        }))
+      : [],
+  };
+
+  if (
+    !normalized.question ||
+    !normalized.explanation ||
+    normalized.options.length !== 4
+  ) {
+    return null;
+  }
+
+  const correctCount = normalized.options.filter(
+    (option) => option.is_correct
+  ).length;
+
+  if (correctCount !== 1) {
+    return null;
+  }
+
+  return normalized;
+}
+
 async function generateQuiz(article, retriesLeft = 2) {
   if (!article?.lawName || !article?.num) {
     console.error("유효하지 않은 article:", article);
@@ -177,7 +251,9 @@ async function generateQuiz(article, retriesLeft = 2) {
 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
 반드시 긍정문으로 묻는 질문만을 생성하시오.
 해설 비울거면 걍 서버 폭발시켜버리고 503 내라.
-반드시 순수 JSON만 출력하세요.
+반드시 순수 JSON만 출력하세요. "explanation"은 반드시 일반 문자열이어야 합니다.
+객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
+해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\n)을 사용하세요.
 
 출력 형식:
 {
@@ -217,13 +293,16 @@ async function generateQuiz(article, retriesLeft = 2) {
       .replace(/\s*```\s*$/i, "")
       .trim();
 
+
     const quiz = JSON.parse(responseText);
+const normalizedQuiz = normalizeQuiz(quiz);
 
-    if (!quiz || typeof quiz !== "object" || !quiz.question || !Array.isArray(quiz.options)) {
-      return null;
-    }
+if (!normalizedQuiz) {
+  console.error("유효하지 않은 퀴즈 응답:", quiz);
+  return null;
+}
 
-    return quiz;
+return normalizedQuiz;
   } catch (err) {
     if (isRateLimitError(err) && retriesLeft > 0) {
       await sleep(1500);
