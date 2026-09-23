@@ -148,6 +148,32 @@ async function throttleMistralCall() {
   lastMistralCallAt = Date.now();
 }
 
+function finalizeQuiz(rawQuiz) {
+  const isNegative = String(rawQuiz.question_type || "").trim().toLowerCase() === "negative";
+
+  const options = rawQuiz.options.map((opt) => {
+    const isTrueStatement = opt?.is_true_statement === true;
+    const isCorrect = isNegative ? !isTrueStatement : isTrueStatement;
+    return { text: String(opt?.text || "").trim(), is_correct: isCorrect };
+  });
+  
+  const correctOptions = options.filter((o) => o.is_correct);
+
+  if (correctOptions.length !== 1 || options.some((o) => !o.text)) {
+    return null;
+  }
+
+  return {
+    id: rawQuiz.id || `quiz-${Date.now()}`,
+    category: rawQuiz.category,
+    question: rawQuiz.question,
+    options,
+    answer: correctOptions[0].text,
+    explanation: rawQuiz.explanation,
+    timer_sec: rawQuiz.timer_sec || 15,
+  };
+}
+
 async function generateQuiz(article, retriesLeft = 2) {
   if (!article?.lawName || !article?.num) {
     console.error("유효하지 않은 article:", article);
@@ -171,7 +197,10 @@ async function generateQuiz(article, retriesLeft = 2) {
 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하세요.
 
 ★ 중요:
-질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
+질문은 긍정형("다음 중 옳은 것은?")과 부정형("다음 중 바르지 않은 것은?") 둘 다 낼 수 있습니다. question_type 필드에 "positive" 또는 "negative" 중 정확한 값을 표시하세요.
+각 보기(option)의 is_true_statement 필드에는 질문 유형과 무관하게, "그 문장이 위 조문내용에 비추어 실제로 참인지"만 true 또는 false로 표시하세요.
+is_correct는 신경 쓰지 마세요 — 서버 코드가 question_type과 is_true_statement 값을 보고 자동으로 계산합니다.
+4개의 보기 중 반드시 정확히 1개만 다른 3개와 참/거짓 여부가 달라야 합니다.
 질문의 전제에 속하는 조항이 실제와 다르거나 해설에서 질문의 조건 및 전제에 부합하지 않는 잘못된 법령의 조항을 인용하지 마시오.
 조항 적용 대상 및 법적 주체를 실제 법령과 다르게 잘못 제시하여 혼란을 야기하는 문제는 절대 내지 마시오.
 반드시 순수 JSON만 출력하세요.
@@ -180,14 +209,14 @@ async function generateQuiz(article, retriesLeft = 2) {
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
+  "question_type": "positive 또는 negative",
   "question": "[질문 내용]",
   "options": [
-    {"text": "[정답 내용]", "is_correct": true},
-    {"text": "[오답 1]", "is_correct": false},
-    {"text": "[오답 2]", "is_correct": false},
-    {"text": "[오답 3]", "is_correct": false}
+    {"text": "[보기1]", "is_true_statement": true 또는 false},
+    {"text": "[보기2]", "is_true_statement": true 또는 false},
+    {"text": "[보기3]", "is_true_statement": true 또는 false},
+    {"text": "[보기4]", "is_true_statement": true 또는 false}
   ],
-  "answer": "[정답 내용과 동일 텍스트]",
   "explanation": "[상세 해설]",
   "timer_sec": 15
 }
@@ -217,11 +246,18 @@ async function generateQuiz(article, retriesLeft = 2) {
       .replace(/\s*```\s*$/i, "")
       .trim();
 
-    const quiz = JSON.parse(responseText);
+    const rawQuiz = JSON.parse(responseText);
 
-    if (!quiz || typeof quiz !== "object" || !quiz.question || !Array.isArray(quiz.options)) {
+    if (!rawQuiz || typeof rawQuiz !== "object" || !rawQuiz.question || !Array.isArray(rawQuiz.options)) {
       return null;
     }
+
+    const quiz = finalizeQuiz(rawQuiz);
+
+    if (!quiz) {
+      console.warn("퀴즈 참/거짓 판정이 일관되지 않아 폐기:", rawQuiz.question);
+       return null;
+     }
 
     return quiz;
   } catch (err) {
