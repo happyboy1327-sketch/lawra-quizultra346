@@ -231,7 +231,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 
 async function validateSingleQuiz(quiz) {
   const systemPrompt = `
-당신은 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 검증하세요.
+당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 검증하세요.
 
 [검증 기준]
 1. 정답(is_correct: true)이 질문에서 요구하는 법령 내용과 부합하고 논리적으로 타당한가?
@@ -239,8 +239,9 @@ async function validateSingleQuiz(quiz) {
 3. 질문과 해설 간에 치명적인 모순이 없는가?
 4. 실제로 없는 법령 조문 및 조항을 지어내진 않았는가?
 5. 전혀 관련없는 법령 조문을 질문 및 해설에 끼어넣었는가?
+6. 법리적 해석이 타당한 정답인가?
 
-대증적인 억지 트집이나 지엽적인 논점 확대는 피하고, 일반적인 객관식 시험 기준에 비추어 명백한 오류가 있을 때만 valid: false를 반환하세요.
+일반적인 객관식 시험 기준에 비추어 명백한 오류가 있을 때만 valid: false를 반환하세요.
 
 ### OUTPUT FORMAT (JSON ONLY)
 {
