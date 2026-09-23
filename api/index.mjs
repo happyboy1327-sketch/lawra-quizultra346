@@ -100,12 +100,17 @@ async function fetchLawArticles(lawId) {
     const lawName = lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
     return articles
-      .filter(Boolean)
-      .map((article) => ({
-        num: article["조문번호"],
-        content: article["조문내용"],
-        lawName,
-      }));
+  .filter((article) => {
+    const content = String(article?.["조문내용"] || "").trim();
+    const num = String(article?.["조문번호"] || "").trim();
+
+    return num && content.length >= 20;
+  })
+  .map((article) => ({
+    num: String(article["조문번호"]).trim(),
+    content: String(article["조문내용"]).trim(),
+    lawName,
+  }));
   } catch (err) {
     console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
@@ -299,29 +304,32 @@ async function validateSingleQuiz(quiz, article) {
   }
 }
 
-async function generateValidQuizSlot(slotIndex, maxTries = 2) {
+async function generateValidQuizSlot(slotIndex, maxTries = 3) {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
     const article = await fetchRandomArticle(law);
+
     if (!article) continue;
 
     const quiz = await generateQuiz(article);
     if (!quiz) continue;
 
     const validation = await validateSingleQuiz(quiz, article);
-    if (validation && validation.valid === true) {
-      console.log(`[슬롯 ${slotIndex}] 문제 생성 및 검증 성공 (시도 ${attempt})`);
+
+    if (validation?.valid === true) {
+      console.log(
+        `[슬롯 ${slotIndex}] 문제 생성 및 검증 성공 (시도 ${attempt})`
+      );
       return quiz;
-    } else {
-      console.warn(`[슬롯 ${slotIndex}] 검증 탈락 (시도 ${attempt}) - ${validation?.reason}`);
     }
+
+    console.warn(
+      `[슬롯 ${slotIndex}] 검증 탈락 (시도 ${attempt}) - ${validation?.reason}`
+    );
   }
 
-  // maxTries 내 실패 시 검증 단계를 생략한 퀴즈 생성 시도 (Fallback)
-  console.warn(`[슬롯 ${slotIndex}] 검증 통과 실패로 기본 생성 진행`);
-  const fallbackLaw = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
-  const fallbackArticle = await fetchRandomArticle(fallbackLaw);
-  return await generateQuiz(fallbackArticle);
+  console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증 시도 실패`);
+  return null;
 }
 
 app.get("/api/lawquizzes/latest", async (req, res) => {
