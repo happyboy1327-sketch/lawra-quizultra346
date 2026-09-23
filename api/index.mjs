@@ -234,9 +234,25 @@ async function generateQuiz(article, retriesLeft = 2) {
   }
 }
 
-async function validateSingleQuiz(quiz) {
+async function validateSingleQuiz(quiz, article) {
+  const sourceText = String(article?.content || "")
+    .replace(/"/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
   const systemPrompt = `
-당신은 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 검증하세요.
+당신은 대한민국 법률 퀴즈 검증관입니다. 아래 [원문 조문]을 유일한 근거로 삼아, 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 검증하세요.
+
+
+[원문 조문]
+법령명: ${article?.lawName || "(알 수 없음)"}
+조문번호: 제${article?.num || "?"}조
+조문내용: ${sourceText || "(원문 없음)"}
+
+★★★ 가장 중요한 규칙 ★★★
+- 질문·보기·해설에 등장하는 모든 법적 근거는 반드시 위 [원문 조문]과 대조해서 판단하십시오.
+- 원문에 없는 내용(다른 조항, 다른 법령 등)을 근거로 삼았다면 valid: false 로 처리하십시오.
+- 당신의 일반 지식이 아니라 오직 주어진 원문 텍스트에 근거해서만 판단하십시오.
+- 원문이 비어 있으면 valid: false, reason에 "원문 누락"이라고 기재하십시오.
 
 [검증 기준]
 아래 항목 중 하나라도 명백하게 위반될 경우 valid: false로 처리하시오.
@@ -336,7 +352,7 @@ async function generateValidQuizSlot(slotIndex, maxTries = 2) {
     const quiz = await generateQuiz(article);
     if (!quiz) continue;
 
-    const validation = await validateSingleQuiz(quiz);
+    const validation = await validateSingleQuiz(quiz, article);
     if (validation && validation.valid === true) {
       console.log(`[슬롯 ${slotIndex}] 문제 생성 및 검증 성공 (시도 ${attempt})`);
       return quiz;
