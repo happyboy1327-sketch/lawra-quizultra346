@@ -229,9 +229,23 @@ async function generateQuiz(article, retriesLeft = 2) {
   }
 }
 
-async function validateSingleQuiz(quiz) {
+async function validateSingleQuiz(quiz, article) {
+  const sourceText = String(article?.content || "")
+    .replace(/"/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
   const systemPrompt = `
-당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 검증하세요.
+당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 아래 원문 조문을 바탕으로 검증하세요.
+[원문 조문]
+법령명: ${article?.lawName || "(알 수 없음)"}
+조문번호: 제${article?.num || "?"}조
+조문내용: ${sourceText || "(원문 없음)"}
+
+★★★ 가장 중요한 규칙 ★★★
+- 질문·보기·해설에 등장하는 모든 법적 근거는 반드시 위 [원문 조문]과 대조해서 판단하십시오.
+- 원문에 없는 내용(다른 조항, 다른 법령 등)을 근거로 삼았다면 valid: false 로 처리하십시오.
+- 당신의 일반 지식이 아니라 오직 주어진 원문 텍스트에 근거해서만 판단하십시오.
+- 원문이 비어 있으면 valid: false, reason에 "원문 누락"이라고 기재하십시오.
 
 [검증 기준]
 1. 정답(is_correct: true)이 질문에서 요구하는 법령 내용과 부합하고 논리적으로 타당한가?
