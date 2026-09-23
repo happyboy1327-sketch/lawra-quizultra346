@@ -379,7 +379,7 @@ async function validateSingleQuiz(quiz, article) {
   }
 }
 
-async function generateValidQuizSlot(slotIndex, maxTries = 2) {
+async function generateValidQuizSlot(slotIndex, maxTries = 3) {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
     const article = await fetchRandomArticle(law);
