@@ -11,8 +11,8 @@
 <body>
 
 <div id="start-screen" class="screen-container active">
-<h1>⚖️ 법률 상식 퀴즈</h1>
-<p style="margin-bottom:30px;font-size:1.1em">매일 새로운 법률 상식을 퀴즈로 배워보세요.<br>한 세트당 5문제가 출제됩니다.</p>
+<h1>⚖️ 법률 상식 퀴즈(오류 많음)</h1>
+<p style="margin-bottom:30px;font-size:1.1em">매일 새로운 법률 상식을 퀴즈로 배워보세요.<br>한 세트당 4~5문제가 출제됩니다.</p>
 <button id="newQuizSetBtnEl" class="btn btn-primary">✨ 새 퀴즈 세트 생성</button>
 <button id="reviewBtnEl" class="btn btn-success" onclick="handleEnterReviewMode()">📚 지난 오답 복습하기</button>
 </div>
@@ -109,6 +109,32 @@ function formatBold(text) {
   if (!text || !String(text).trim()) return '';
   return String(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 }
+
+  function displayText(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value == null) {
+    return "";
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(displayText).filter(Boolean).join("\n");
+  }
+
+  if (typeof value === "object") {
+    return displayText(
+      value.text ??
+      value.content ??
+      value.explanation ??
+      value.reason ??
+      JSON.stringify(value)
+    );
+  }
+
+  return String(value);
+  }
 
 // 퀴즈 UI 업데이트
 function updateQuizUI() {
