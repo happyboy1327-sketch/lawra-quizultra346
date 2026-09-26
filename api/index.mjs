@@ -279,6 +279,8 @@ async function generateQuiz(article, retriesLeft = 2) {
       model: MODEL,
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
+      temperature: 0.05,
+      reasoning_effort= 'high',
     });
 
     let responseText = response?.choices?.[0]?.message?.content;
