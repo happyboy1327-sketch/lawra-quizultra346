@@ -259,6 +259,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
+  "explanation": "[인용된 법률 조문과 일치하는 상세 해설]",
   "question": "[질문 내용]",
   "options": [
     {"text": "[정답 내용]", "is_correct": true},
@@ -267,7 +268,6 @@ async function generateQuiz(article, retriesLeft = 2) {
     {"text": "[오답 3]", "is_correct": false}
   ],
   "answer": "[정답 내용과 동일 텍스트]",
-  "explanation": "[상세 해설]",
   "timer_sec": 15
 }
 `;
@@ -349,12 +349,13 @@ async function validateSingleQuiz(quiz, article) {
 - 질문·보기·해설에 등장하는 모든 법적 근거는 반드시 위 [원문 조문]과 대조해서 판단하십시오.
 - 오직 원문에 없는 내용(다른 조항, 다른 법령 등)만을 근거로 삼았다면 valid: false 로 처리하십시오.
 - 당신의 일반 지식이 아니라 오직 주어진 원문 텍스트에 근거해서만 판단하십시오.
+- 질문이나 해설에서 현행 법률과 모순되거나, 질문에 시간 서순 및 배경적 서술에 모순이 있을 경우, valid: false 로 처리하십시오.
 - 원문이 비어 있으면 valid: false, reason에 "원문 누락"이라고 기재하십시오.
 
 [검증 기준]
 1. 정답(is_correct: true)이 질문에서 요구하는 법령 내용과 부합하고 논리적으로 타당한가?
 2. 정답이 2개 이상이거나 정답이 없는 등의 오류가 없는가?
-3. 질문과 해설 간에 치명적인 모순이 없는가?
+3. 질문과 해설 간에 치명적인 모순이 없는가?[e.g. 7일 이내 취소 불가로 약정했다. 위반인가?? 해설- 제17조에 따르면..14일 이내로 정하고..(X) → 7일 이내로..(○)]
 4. 실제로 없는 법령 조문 및 조항을 지어내진 않았는가?
 5. 전혀 관련없는 법령 조문을 질문 및 해설에 끼어넣었는가?
 6. 법리적 해석이 타당한 정답인가?
