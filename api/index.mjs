@@ -196,9 +196,9 @@ function normalizeQuiz(quiz) {
     ...quiz,
     id: normalizeText(quiz.id),
     category: normalizeText(quiz.category),
+    explanation: normalizeText(quiz.explanation),
     question: normalizeText(quiz.question),
     answer: normalizeText(quiz.answer),
-    explanation: normalizeText(quiz.explanation),
     timer_sec: Number(quiz.timer_sec) || 15,
     options: Array.isArray(quiz.options)
       ? quiz.options.map((option) => ({
@@ -259,7 +259,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
-  "explanation": "[인용된 법률 조문과 일치하는 상세 해설]",
+  "explanation": "[인용된 법률 조문과 일치하고 상통하는 상세 해설]",
   "question": "[질문 내용]",
   "options": [
     {"text": "[정답 내용]", "is_correct": true},
