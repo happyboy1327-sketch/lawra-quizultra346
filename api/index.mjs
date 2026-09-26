@@ -251,6 +251,8 @@ async function generateQuiz(article, retriesLeft = 2) {
 □ 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
 □ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하고, 수식 관계를 명확히 쉼표로 구분하시오.
 □ 반드시 순수 JSON만 출력하세요. "explanation"은 반드시 일반 문자열이어야 합니다.
+□ 인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석될 여지가 있을 경우, 해설에서 제외하시오.
+□ 없는 조문을 지어내지 마시오.
 □ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
 □ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\n)을 사용하세요.
 □ 해설엔 질문의 논리에 부합하고 정확한 법령조문을 인용하시오.
@@ -280,7 +282,6 @@ async function generateQuiz(article, retriesLeft = 2) {
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
       temperature: 0.05,
-      reasoning_effort: "high",
     });
 
     let responseText = response?.choices?.[0]?.message?.content;
@@ -361,7 +362,9 @@ async function validateSingleQuiz(quiz, article) {
 4. 실제로 없는 법령 조문 및 조항을 지어내진 않았는가?
 5. 전혀 관련없는 법령 조문을 질문 및 해설에 끼어넣었는가?
 6. 법리적 해석이 타당한 정답인가?
-7. 해당 법령의 권리·의무·제재·절차 등이 문제에서 제시된 주체에게 실제로 적용되는가?
+7. 해설 내 인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석될 여지가 있을 경우, false 처리하시오.
+8. 없는 조문을 지어냈다고 판단된 경우, false 처리하시오.
+9. 해당 법령의 권리·의무·제재·절차 등이 문제에서 제시된 주체에게 실제로 적용되는가?
    소비자, 사업자, 근로자, 사용자, 행정기관, 법원, 공무원 등 각 주체의 법적 지위와 적용 대상을 정확히 구분하라. 해설 내 법적 지위와 적용 대상이 실제 조항의 그것과 일치하지 않으면 절대 안된다.
 
 일반적인 객관식 시험 기준에 비추어 명백한 오류가 있을 때만 valid: false를 반환하세요.
