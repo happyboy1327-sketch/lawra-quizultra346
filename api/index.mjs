@@ -100,17 +100,28 @@ async function fetchLawArticles(lawId) {
     const lawName = lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
     return articles
-  .filter((article) => {
-    const content = String(article?.["조문내용"] || "").trim();
-    const num = String(article?.["조문번호"] || "").trim();
+      .map((article) => {
+        const num = String(article?.["조문번호"] || "").trim();
+        const joContent = String(article?.["조문내용"] || "").trim();
 
-    return num && content.length >= 20;
-  })
-  .map((article) => ({
-    num: String(article["조문번호"]).trim(),
-    content: String(article["조문내용"]).trim(),
-    lawName,
-  }));
+        // 항 데이터 추출 (단일 객체/배열 예외 처리)
+        const hangRaw = article?.["항"];
+        const hangList = hangRaw ? (Array.isArray(hangRaw) ? hangRaw : [hangRaw]) : [];
+        const hangTexts = hangList
+          .map((h) => String(h?.["항내용"] || "").trim())
+          .filter(Boolean);
+
+        // 조문제목 + 항내용 결합
+        const fullContent = [joContent, ...hangTexts].join("\n").trim();
+
+        return {
+          num,
+          content: fullContent, // 전체 내용 (조문제목 + 항)
+          hang: hangTexts,       // 항 내용 배열만 따로 필요한 경우 사용
+          lawName,
+        };
+      })
+      .filter((article) => article.num && article.content.length >= 20);
   } catch (err) {
     console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
@@ -243,9 +254,9 @@ async function generateQuiz(article, retriesLeft = 2) {
 
 법령명: ${article.lawName}
 조문번호: 제${article.num}조
-조문내용: ${content}
+조문 및 항 내용: ${content}
 
-위 조문의 내용을 바탕으로 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 하나라도 만족하지 않을시 재생성하시오.
+위 조문의 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 하나라도 만족하지 않을시 재생성하시오.
 □ 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적 법률 사례 문제를 만드세요.
 □ 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 자세히 작성하시오.
 □ 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
@@ -255,7 +266,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 □ 없는 조문을 지어내지 마시오.
 □ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
 □ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\n)을 사용하세요.
-□ 해설엔 질문의 논리에 부합하고 정확한 법령조문을 인용하시오.
+□ 해설엔 질문의 논리에 부합하고 정확한 법령조문 및 항 내용을 인용하시오
 
 출력 형식:
 {
@@ -318,7 +329,7 @@ return normalizedQuiz;
 
 async function validateSingleQuiz(quiz, article) {
   const sourceText = String(article?.content || "")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+/g, " ")
     .trim();
 
   console.log("[검증 시작]", {
