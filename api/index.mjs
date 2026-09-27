@@ -104,20 +104,64 @@ async function fetchLawArticles(lawId) {
         const num = String(article?.["조문번호"] || "").trim();
         const joContent = String(article?.["조문내용"] || "").trim();
 
-        // 항 데이터 추출 (단일 객체/배열 예외 처리)
-        const hangRaw = article?.["항"];
-        const hangList = hangRaw ? (Array.isArray(hangRaw) ? hangRaw : [hangRaw]) : [];
-        const hangTexts = hangList
-          .map((h) => String(h?.["항내용"] || "").trim())
-          .filter(Boolean);
+        const lines = [];
+        if (joContent) lines.push(joContent);
 
-        // 조문제목 + 항내용 결합
-        const fullContent = [joContent, ...hangTexts].join("\n").trim();
+        const hangTexts = [];
+        const hangRaw = article?.["항"];
+        const hoRaw = article?.["호"];
+
+        // 1. 항 구조 추출 (항 -> 호 -> 목 하위 탐색)
+        if (hangRaw) {
+          const hangList = Array.isArray(hangRaw) ? hangRaw : [hangRaw];
+          hangList.forEach((h) => {
+            const hLines = [];
+            const hangContent = String(h?.["항내용"] || "").trim();
+            if (hangContent) hLines.push(hangContent);
+
+            const innerHo = h?.["호"];
+            if (innerHo) {
+              const hoList = Array.isArray(innerHo) ? innerHo : [innerHo];
+              hoList.forEach((ho) => {
+                const hoContent = String(ho?.["호내용"] || "").trim();
+                if (hoContent) hLines.push(`  ${hoContent}`);
+
+                const innerMok = ho?.["목"];
+                if (innerMok) {
+                  const mokList = Array.isArray(innerMok) ? innerMok : [innerMok];
+                  mokList.forEach((m) => {
+                    const mContent = String(m?.["목내용"] || "").trim();
+                    if (mContent) hLines.push(`    ${mContent}`);
+                  });
+                }
+              });
+            }
+
+            if (hLines.length > 0) {
+              const combinedHang = hLines.join("\n");
+              hangTexts.push(combinedHang);
+              lines.push(combinedHang);
+            }
+          });
+        } 
+        // 2. 항 없이 조문 바로 밑에 호가 들어있는 경우 처리
+        else if (hoRaw) {
+          const hoList = Array.isArray(hoRaw) ? hoRaw : [hoRaw];
+          hoList.forEach((ho) => {
+            const hoContent = String(ho?.["호내용"] || "").trim();
+            if (hoContent) {
+              hangTexts.push(hoContent);
+              lines.push(`  ${hoContent}`);
+            }
+          });
+        }
+
+        const fullContent = lines.join("\n").trim();
 
         return {
           num,
-          content: fullContent, // 전체 내용 (조문제목 + 항)
-          hang: hangTexts,       // 항 내용 배열만 따로 필요한 경우 사용
+          content: fullContent, // 전체 내용 (조문제목 + 항 + 호 + 목)
+          hang: hangTexts,       // 항 내용 배열
           lawName,
         };
       })
@@ -128,6 +172,7 @@ async function fetchLawArticles(lawId) {
   }
 }
 
+ 
 async function fetchRandomArticle(law) {
   const articles = await fetchLawArticles(law.lawId);
 
