@@ -325,7 +325,7 @@ async function validateSingleQuiz(quiz, article) {
     lawName: article?.lawName,
     articleNumber: article?.num,
     sourceLength: sourceText.length,
-    sourcePreview: sourceText.slice(0, 200),
+    sourcePreview: sourceText.slice(0, 280),
   });
 
   if (!sourceText) {
