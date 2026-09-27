@@ -386,6 +386,7 @@ async function validateSingleQuiz(quiz, article) {
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: userPrompt }],
       temperature: 0,
+      reasoning_effort: "high",
     });
 
     let resultText = response?.choices?.[0]?.message?.content;
