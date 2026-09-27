@@ -165,7 +165,7 @@ async function fetchLawArticles(lawId) {
           lawName,
         };
       })
-      .filter((article) => article.num && article.content.length >= 20);
+      .filter((article) => article.num && article.content.length >= 37);
   } catch (err) {
     console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
