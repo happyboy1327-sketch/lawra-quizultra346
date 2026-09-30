@@ -341,7 +341,8 @@ async function generateQuiz(article, retriesLeft = 2) {
       model: MODEL,
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.05,
+      temperature: 0.03,
+      reasoning_effort: "high",
     });
 
     let responseText = response?.choices?.[0]?.message?.content;
@@ -381,17 +382,18 @@ async function validateSingleQuiz(quiz, article) {
     .replace(/[ \t]+/g, " ")
     .trim();
 
-  console.log("[검증 시작]", {
+  console.log("[검증 및 자동수정 시작]", {
     lawName: article?.lawName,
     articleNumber: article?.num,
     sourceLength: sourceText.length,
-    sourcePreview: sourceText.slice(0, 280),
+    sourcePreview: sourceText.slice(0, 320),
   });
 
   if (!sourceText) {
     return {
       valid: false,
       reason: "원문 누락",
+      repairedQuiz: null,
     };
   }
 
@@ -405,41 +407,36 @@ async function validateSingleQuiz(quiz, article) {
   };
 
   const userPrompt = `
-당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증관입니다. 제시된 퀴즈가 법적 사실관계 및 논리상 적절한지 아래 원문 조문을 바탕으로 검증하세요.
+당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증 및 교정관입니다. 
+제시된 퀴즈가 아래 [원문 조문]과 일치하는지 검증하고, 원문과 불합치하거나 질문-정답-해설 간 모순이 있을 경우 원문 조문 스니펫을 완벽히 반영하여 자동 수정(Snippet Auto-Fix)하십시오.
 
-
-★★★ 가장 중요한 규칙 ★★★
-- 질문·보기·해설에 등장하는 모든 법적 근거는 반드시 위 [원문 조문]과 대조해서 판단하십시오.
-- 오직 원문에 없는 내용(다른 조항, 다른 법령 등)만을 근거로 삼았다면 valid: false 로 처리하십시오.
-- 오직 주어진 원문 텍스트에 근거해서만 판단하십시오.
-- 질문이나 해설에서 현행 법률과 모순되거나, 질문에 시간 서순 및 배경적 서술에 모순이 있을 경우, valid: false 로 처리하십시오.
-- 원문이 비어 있으면 valid: false, reason에 "원문 누락"이라고 기재하십시오.
-
-[검증 기준]
-1. 정답(is_correct: true)이 질문에서 요구하는 법령 내용과 부합하고 논리적으로 타당한가?
-2. 정답이 2개 이상이거나 정답이 없는 등의 오류가 없는가?
-3. 질문과 해설 간에 치명적인 모순이 없는가?[e.g. 7일 이내 취소 불가로 약정했다. 위반인가?? 해설- 제17조에 따르면..14일 이내로 정하고..(X) → 7일 이내로..(○)]
-3-1. 질문에 맞는 정답이 해설 첫 두 문장 중 하나라도 일치하지 않으면 false.
-4. 상관관계와 인과관계, 선후관계가 올바른가? 
-5. 유사 법률, 대립되는 법률을 혼동하지 않았는가?
-5-1. 권리, 의무, 원칙, 예외, 가능 등의 사항을 착각하여 실제 법령에 맞지 않게 잘못 해석하지 않았는가?
-6. 실제로 없는 법령 조문 및 조항, 벌칙을 지어내진 않았는가?
-7. 전혀 관련없는 법령 조문을 질문 및 해설에 끼어넣지 않았으며, 법리적 해석이 타당한 정답인가?
-8. 해설 내 인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석될 여지가 있을 경우, false 처리하시오.
-9. 해당 법령의 권리·의무·제재·절차 등이 문제에서 제시된 주체에게 실제로 적용되는가?
- → 소비자, 사업자, 근로자, 사용자, 행정기관, 법원, 공무원 등 각 주체의 법적 지위와 적용 대상을 정확히 구분하라. 해설 내 법적 지위와 적용 대상이 실제 조항의 그것과 일치하지 않으면 절대 안된다.
-10. 질문이 묻는 본질(예: 소멸시효 기간), 정답 보기의 내용, 해설 내 법령 인용 및 수치/시점이 서로 완벽히 부합하는가?
-   - 질문은 '소멸시효', '효력이 발생하는 날'을 물었는데 정답이나 해설이 '1개월 이후 시점'처럼 엉뚱한 수치/시점을 가리키는 등 단위나 질문 의도가 불일치하면 반드시 valid: false 처리하고, reason에 "질문-정답-해설 간 단위 및 시점 불일치"라고 기술하시오.
-
-일반적인 객관식 시험 기준에 비추어 명백한 오류가 있을 때만 valid: false를 반환하세요.
+[검증 및 교정 기준]
+1. 질문·보기·해설의 법적 수치, 시점, 주체, 법리 해석이 [원문 조문]과 100% 일치해야 합니다.
+2. 질문에 맞는 정답과 해설의 첫 두 문장 간 내용이 불합치하거나 핀트가 어긋나면 valid: false 처리하십시오.
+3. valid: false인 경우, 오직 [원문 조문] 텍스트 스니펫에 근거하여 질문, 4지선다 보기(정답 1개 필수), 정답(answer), 해설(explanation)을 즉시 교정한 repairedQuiz 객체를 반드시 생성하십시오.
+4. valid: true인 경우 repairedQuiz는 null로 설정하십시오.
 
 ### OUTPUT FORMAT (JSON ONLY)
 {
   "valid": boolean,
-  "reason": string
+  "reason": "검증 실패 원인 또는 수정 내역",
+  "repairedQuiz": {
+    "id": "${quiz.id}",
+    "category": "${quiz.category}",
+    "explanation": "[원문 조문 스니펫과 완벽히 부합하도록 수정한 해설]",
+    "question": "[질문 의도와 원문 조문에 맞게 수정한 질문]",
+    "options": [
+      {"text": "[정답 내용]", "is_correct": true},
+      {"text": "[오답 1]", "is_correct": false},
+      {"text": "[오답 2]", "is_correct": false},
+      {"text": "[오답 3]", "is_correct": false}
+    ],
+    "answer": "[정답 내용과 동일 텍스트]",
+    "timer_sec": 15
+  } | null
 }
 
-[원문 조문] : ${JSON.stringify(validationPayload, null, 2)}
+[원문 조문 및 퀴즈 데이터] : ${JSON.stringify(validationPayload, null, 2)}
 `;
 
   try {
@@ -456,7 +453,7 @@ async function validateSingleQuiz(quiz, article) {
     let resultText = response?.choices?.[0]?.message?.content;
 
     if (!resultText || typeof resultText !== "string") {
-      return { valid: false, reason: "검증 응답 비어 있음" };
+      return { valid: false, reason: "검증 응답 비어 있음", repairedQuiz: null };
     }
 
     resultText = resultText
@@ -471,18 +468,23 @@ async function validateSingleQuiz(quiz, article) {
       return {
         valid: false,
         reason: "검증 결과 형식 오류",
+        repairedQuiz: null,
       };
     }
+
+    const repaired = parsed.repairedQuiz ? normalizeQuiz(parsed.repairedQuiz) : null;
 
     return {
       valid: parsed.valid,
       reason: String(parsed.reason || ""),
+      repairedQuiz: repaired,
     };
   } catch (err) {
-    console.error("Mistral 검증 호출 오류:", err.message);
+    console.error("Mistral 검증/수정 호출 오류:", err.message);
     return {
       valid: true,
       reason: "검증 API 호출 실패로 임시 통과",
+      repairedQuiz: null,
     };
   }
 }
@@ -499,6 +501,7 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
 
     const validation = await validateSingleQuiz(quiz, article);
 
+    // 1. 검증 통과 시 기존 퀴즈 채택
     if (validation?.valid === true) {
       console.log(
         `[슬롯 ${slotIndex}] 문제 생성 및 검증 성공 (시도 ${attempt})`
@@ -506,12 +509,20 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
       return quiz;
     }
 
+    // 2. 검증 탈락 시 스니펫 기반 자동 수정본(repairedQuiz) 채택
+    if (validation?.repairedQuiz) {
+      console.log(
+        `[슬롯 ${slotIndex}] 원문 불합치/오류 감지 -> 스니펫 자동 수정 완료 (시도 ${attempt}) - 사유: ${validation?.reason}`
+      );
+      return validation.repairedQuiz;
+    }
+
     console.warn(
-      `[슬롯 ${slotIndex}] 검증 탈락 (시도 ${attempt}) - ${validation?.reason}`
+      `[슬롯 ${slotIndex}] 검증 및 자동수정 실패 (시도 ${attempt}) - ${validation?.reason}`
     );
   }
 
-  console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증 시도 실패`);
+  console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증/자동수정 시도 실패`);
   return null;
 }
 
