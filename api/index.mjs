@@ -509,12 +509,26 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
       return quiz;
     }
 
-    // 2. 검증 탈락 시 스니펫 기반 자동 수정본(repairedQuiz) 채택
+// 2. 검증 탈락 시 스니펫 기반 자동 수정본(repairedQuiz) 채택 및 디버깅 데이터 바인딩
     if (validation?.repairedQuiz) {
-      console.log(
-        `[슬롯 ${slotIndex}] 원문 불합치/오류 감지 -> 스니펫 자동 수정 완료 (시도 ${attempt}) - 사유: ${validation?.reason}`
-      );
-      return validation.repairedQuiz;
+      console.log(`\n================ [슬롯 ${slotIndex} 자동 수정 내역 디버깅] ================`);
+      console.log(`- 사유: ${validation?.reason}`);
+      console.log(`- 수정 전 질문: ${quiz.question}`);
+      console.log(`- 수정 후 질문: ${validation.repairedQuiz.question}`);
+      console.log(`- 수정 전 정답: ${quiz.answer}`);
+      console.log(`- 수정 후 정답: ${validation.repairedQuiz.answer}`);
+      console.log(`========================================================================\n`);
+
+      return {
+        ...validation.repairedQuiz,
+        isRepaired: true,
+        repairReason: validation.reason,
+        debugInfo: {
+          originalQuestion: quiz.question,
+          originalAnswer: quiz.answer,
+          originalExplanation: quiz.explanation,
+        },
+      };
     }
 
     console.warn(
