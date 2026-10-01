@@ -460,7 +460,8 @@ async function generateQuiz(article, retriesLeft = 2) {
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
-  "explanation": "[인용된 법률 조문과 일치하고 상통하는 상세 해설]",
+  "concept_summary": "[문제의 목적, 법률을 어떻게 해석하는지의 의도]",
+  "explanation": {"string": "[인용된 법률 조문과 일치하고 상통하는 상세 해설]", "Boolean": "true"},
   "question": "[질문 내용]",
   "options": [
     {"text": "[정답 내용]", "is_correct": true},
