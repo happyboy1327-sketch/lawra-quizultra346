@@ -96,93 +96,68 @@ async function fetchLawArticles(lawId) {
       return [];
     }
 
-    const articles = Array.isArray(joData) ? joData : [joData];
+    // "제1장 총칙" 같은 장 제목(전문)은 제외
+    const articles = (Array.isArray(joData) ? joData : [joData])
+      .filter((a) => a?.["조문여부"] !== "전문");
+
     const lawName =
       lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
-    // ============================================================
-    // 내부 함수 1: 조문 하나를 기존 형식으로 변환
-    // ============================================================
-    function parseArticle(article) {
-      const num = String(article?.["조문번호"] || "").trim();
-      const joContent = String(article?.["조문내용"] || "").trim();
+    const toArray = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
+    const text = (v) => String(v || "").trim();
 
+    // ① → 1, ② → 2 변환
+    function toHangNo(v, fallback) {
+      const c = text(v).charCodeAt(0);
+      if (c >= 0x2460 && c <= 0x2473) return String(c - 0x2460 + 1);
+      if (c >= 0x3251 && c <= 0x325F) return String(c - 0x3251 + 21);
+      return String(fallback);
+    }
+
+    // 조문 하나를 { key, content, hangMap ... } 로 정리
+    function parseArticle(article) {
+      const num = text(article?.["조문번호"]);
+      const jk = text(article?.["조문키"]);
+      const joNo = parseInt(jk.slice(0, 4), 10) || parseInt(num, 10);
+      const branchNo = parseInt(jk.slice(4, 6), 10) || 0;
+      const key = branchNo ? `제${joNo}조의${branchNo}` : `제${joNo}조`;
+
+      const joContent = text(article?.["조문내용"]);
       const lines = [];
       if (joContent) lines.push(joContent);
 
       const hangTexts = [];
-      const hangRaw = article?.["항"];
-      const hoRaw = article?.["호"];
+      const hangMap = {}; // { "1": "1항 내용", "2": "2항 내용" }
 
-      // 1. 항 -> 호 -> 목
-      if (hangRaw) {
-        const hangList = Array.isArray(hangRaw)
-          ? hangRaw
-          : [hangRaw];
+      const hangList = toArray(article?.["항"]);
 
-        hangList.forEach((h) => {
+      if (hangList.length > 0) {
+        hangList.forEach((h, i) => {
           const hLines = [];
 
-          const hangContent =
-            String(h?.["항내용"] || "").trim();
+          const hangContent = text(h?.["항내용"]);
+          if (hangContent) hLines.push(hangContent);
 
-          if (hangContent) {
-            hLines.push(hangContent);
-          }
+          toArray(h?.["호"]).forEach((ho) => {
+            const hoContent = text(ho?.["호내용"]);
+            if (hoContent) hLines.push(`  ${hoContent}`);
 
-          const innerHo = h?.["호"];
-
-          if (innerHo) {
-            const hoList = Array.isArray(innerHo)
-              ? innerHo
-              : [innerHo];
-
-            hoList.forEach((ho) => {
-              const hoContent =
-                String(ho?.["호내용"] || "").trim();
-
-              if (hoContent) {
-                hLines.push(`  ${hoContent}`);
-              }
-
-              const innerMok = ho?.["목"];
-
-              if (innerMok) {
-                const mokList = Array.isArray(innerMok)
-                  ? innerMok
-                  : [innerMok];
-
-                mokList.forEach((m) => {
-                  const mokContent =
-                    String(m?.["목내용"] || "").trim();
-
-                  if (mokContent) {
-                    hLines.push(`    ${mokContent}`);
-                  }
-                });
-              }
+            toArray(ho?.["목"]).forEach((m) => {
+              const mokContent = text(m?.["목내용"]);
+              if (mokContent) hLines.push(`    ${mokContent}`);
             });
-          }
+          });
 
           if (hLines.length > 0) {
-            const combinedHang = hLines.join("\n");
-
-            hangTexts.push(combinedHang);
-            lines.push(combinedHang);
+            const combined = hLines.join("\n");
+            hangTexts.push(combined);
+            hangMap[toHangNo(h?.["항번호"], i + 1)] = combined;
+            lines.push(combined);
           }
         });
-      }
-
-      // 2. 항 없이 조문 바로 밑에 호가 있는 경우
-      else if (hoRaw) {
-        const hoList = Array.isArray(hoRaw)
-          ? hoRaw
-          : [hoRaw];
-
-        hoList.forEach((ho) => {
-          const hoContent =
-            String(ho?.["호내용"] || "").trim();
-
+      } else {
+        toArray(article?.["호"]).forEach((ho) => {
+          const hoContent = text(ho?.["호내용"]);
           if (hoContent) {
             hangTexts.push(hoContent);
             lines.push(`  ${hoContent}`);
@@ -190,36 +165,22 @@ async function fetchLawArticles(lawId) {
         });
       }
 
-      const fullContent = lines.join("\n").trim();
-
       return {
         num,
-        content: fullContent,
+        key,
+        content: lines.join("\n").trim(),
         hang: hangTexts,
+        hangMap,
         lawName,
       };
     }
 
-    // ============================================================
-    // 내부 함수 2: 조문 내용에서 "제○조" 형태 추출
-    // ============================================================
+    // 조문 내용에서 인용된 조문 찾기: 제10조 / 제10조제1항 / 제10조의2제2항
     function extractReferencedArticleNumbers(content) {
       if (!content) return [];
 
       const found = new Set();
-
-      /*
-       * 찾는 형태:
-       *
-       * 제10조
-       * 제10조의2
-       * 제10조의 2
-       * 제10조제2항
-       * 제10조의2제3항
-       *
-       * 최종적으로는 "제10조", "제10조의2"만 반환
-       */
-      const regex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
+      const regex = /제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*(?:제\s*)?(\d+)\s*항)?/g;
 
       let match;
 
@@ -228,87 +189,71 @@ async function fetchLawArticles(lawId) {
           ? `제${match[1]}조의${match[2]}`
           : `제${match[1]}조`;
 
-        found.add(articleNumber);
+        found.add(match[3] ? `${articleNumber}제${match[3]}항` : articleNumber);
       }
 
       return [...found];
     }
 
-    // ============================================================
-    // 내부 함수 3: 전체 조문을 "조문번호 -> 조문" 형태로 저장
-    // ============================================================
+    // 전체 조문을 "제10조" 같은 이름으로 찾을 수 있게 보관
     const articleMap = new Map();
 
     articles.forEach((article) => {
       const parsed = parseArticle(article);
-
-      if (parsed.num) {
-        articleMap.set(parsed.num, parsed);
-      }
+      if (parsed.num) articleMap.set(parsed.key, parsed);
     });
 
-    // ============================================================
-    // 내부 함수 4: 특정 조문이 참조하는 조문을 재귀적으로 찾기
-    // ============================================================
     const collected = new Map();
     const visited = new Set();
 
     function collectArticle(article) {
-      if (!article?.num) return;
+      if (!article?.key || visited.has(article.key)) return;
+      visited.add(article.key);
 
-      // 이미 처리한 조문이면 다시 들어가지 않음
-      if (visited.has(article.num)) return;
-
-      visited.add(article.num);
-
-      // 기존 코드와 동일하게 37자 미만은 결과에서 제외
+      // 기존과 동일하게 37자 미만은 결과에서 제외
       if (article.content.length >= 37) {
-        collected.set(article.num, article);
+        collected.set(article.key, article);
       }
 
-      // 현재 조문의 전체 내용에서 다른 조문 찾기
-      const referencedNumbers =
-        extractReferencedArticleNumbers(article.content);
+      extractReferencedArticleNumbers(article.content).forEach((ref) => {
+        const [, key, hang] = ref.match(
+          /^(제\d+조(?:의\d+)?)(?:제(\d+)항)?$/
+        );
+        const target = articleMap.get(key);
+        if (!target) return;
 
-      referencedNumbers.forEach((referencedNum) => {
-        const referencedArticle =
-          articleMap.get(referencedNum);
-
-        // 현재 법령에 실제 존재하는 조문일 때만 추가
-        if (
-          referencedArticle &&
-          !visited.has(referencedNum)
-        ) {
-          collectArticle(referencedArticle);
+        if (hang && target.hangMap[hang]) {
+          // 제10조제1항 → 제10조의 1항 내용만 따로 뽑기
+          collectArticle({
+            num: target.num,
+            key: ref,
+            label: ref,
+            content: target.hangMap[hang],
+            hang: [target.hangMap[hang]],
+            hangMap: {},
+            lawName,
+          });
+        } else {
+          // 제10조만 인용 → 조 전체
+          collectArticle(target);
         }
       });
     }
 
-    // ============================================================
-    // 내부 함수 5: 최초 조문들을 기존 방식대로 처리
-    // ============================================================
     articles.forEach((article) => {
       const parsed = parseArticle(article);
 
-      if (
-        parsed.num &&
-        parsed.content.length >= 37
-      ) {
+      if (parsed.num && parsed.content.length >= 37) {
         collectArticle(parsed);
       }
     });
 
     return [...collected.values()];
   } catch (err) {
-    console.error(
-      `법령 API 오류 (ID: ${lawId}):`,
-      err.message
-    );
-
+    console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
   }
 }
-
  
 async function fetchRandomArticle(law) {
   const articles = await fetchLawArticles(law.lawId);
@@ -485,7 +430,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 다음 한국 법령 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요.
 
 법령명: ${article.lawName}
-조문번호: 제${article.num}조
+조문번호: ${article.label || article.key}
 조문 및 항 내용: ${content}
 
 위 조문의 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 하나라도 만족하지 않을시 재생성하시오.
