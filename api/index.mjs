@@ -502,7 +502,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 □ 반드시 순수 JSON만 출력하세요. "explanation"은 반드시 일반 문자열이어야 합니다.
 □ 인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석될 여지가 있을 경우, 해설에서 제외하시오.
 □ ⚠️없는 조문을 지어내지 마시오.
-□ ⚠️인용할 법률의 조항 번호를 잘못 쓰면 안됩니다.
+□ ⚠️인용할 법률의 조항 번호를 잘못 쓰면 안됩니다. 조항 번호를 하나도 모르겠으면 비워놓고 번호를 제외한 내용만 써놓으시오.
 □ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
 □ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\n)을 사용하세요.
 □ 해설엔 질문의 논리에 부합하고 정확한 법령조문 및 항 내용을 인용하시오
@@ -701,13 +701,26 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
 
     const validation = await validateSingleQuiz(quiz, article);
 
-    // 1. 검증 통과 시 기존 퀴즈 채택
     if (validation?.valid === true) {
-      console.log(
-        `[슬롯 ${slotIndex}] 문제 생성 및 검증 성공 (시도 ${attempt})`
-      );
-      return quiz;
-    }
+  console.log(
+    `[슬롯 ${slotIndex}] 1차 문제 생성 및 검증 성공 (시도 ${attempt})`
+  );
+
+  // 강제 추가 검증
+  const revalidation = await validateSingleQuiz(quiz, article);
+
+  if (revalidation?.valid === true) {
+    console.log(
+      `[슬롯 ${slotIndex}] 2차 강제 검증까지 성공 (시도 ${attempt})`
+    );
+    return quiz;
+  }
+
+  console.log(
+    `[슬롯 ${slotIndex}] 2차 강제 검증 실패 → 재시도`
+  );
+}
+
 
 // 2. 검증 탈락 시 스니펫 기반 자동 수정본(repairedQuiz) 채택 및 디버깅 데이터 바인딩
     if (validation?.repairedQuiz) {
