@@ -453,6 +453,7 @@ function normalizeQuiz(quiz) {
   if (
     !normalized.question ||
     !normalized.explanation.string ||
+    normalized.explanation.Boolean !== true ||
     normalized.options.length !== 4
   ) {
     return null;
