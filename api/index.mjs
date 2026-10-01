@@ -280,9 +280,9 @@ async function fetchLawArticles(lawId) {
           !visited.has(referencedNum)
         ) {
           collectArticle(referencedArticle);
+          console.log('재귀 OK');
         }
       });
-      console.log (`재귀 조문 찾음`)
     }
 
     // ============================================================
@@ -506,7 +506,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 □ ⚠️인용할 법률의 조항 번호를 잘못 쓰면 안됩니다. 조항 번호를 하나도 모르겠으면 비워놓고 번호를 제외한 내용만 써놓으시오.
 □ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
 □ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\n)을 사용하세요.
-□ 해설엔 질문의 논리에 부합하고 정확한 법령조문 및 항 내용을 인용하시오
+□ 해설엔 질문의 논리에 부합하고 정확한 법령조문 및 항 내용을 인용하시오.
 
 출력 형식:
 {
@@ -533,7 +533,7 @@ async function generateQuiz(article, retriesLeft = 2) {
       model: MODEL,
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.03,
+      temperature: 0.01,
       reasoning_effort: "high",
     });
 
@@ -604,8 +604,8 @@ async function validateSingleQuiz(quiz, article) {
 
 [검증 및 교정 기준]
 1. 질문·보기·해설의 법적 수치, 시점, 주체, 법리 해석이 [원문 조문]과 100% 일치해야 합니다.
-2. 상관관계와 인과관계, 선후관계가 올바른지 확인하시오. 
-3. 유사 법률, 대립되는 법률을 혼동하지 않았는지 확인하시오.
+2. 상관관계와 인과관계, 선후관계가 올바른지, 유사 법률, 대립되는 법률을 혼동하지 않았는지 확인하시오. 
+3. 질문에서 의도한 기간 조건이 정답에서 제대로 계산되었는지 실제 법령과 비교하며 검사하시오.
 4. 권리, 의무, 원칙, 예외, 가능 등의 사항을 착각하여 실제 법령에 맞지 않게 잘못 해석하지 않았는지 확인하시오.
  → 해설 내 인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석되어 있을 경우, false 처리하시오.
 5. 실제로 없는 법령 조문 및 조항, 벌칙을 지어내진 않았는지, 실제 적용될 법령의 조항 번호를 착각 및 환각했는지 확인하시오.
@@ -729,6 +729,8 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
       console.log(`- 사유: ${validation?.reason}`);
       console.log(`- 수정 전 질문: ${quiz.question}`);
       console.log(`- 수정 후 질문: ${validation.repairedQuiz.question}`);
+      console.log(`- 수정 전 해설: ${quiz.explanation}`);
+      console.log(`- 수정 후 해설: ${validation.repairedQuiz.explanation}`);
       console.log(`- 수정 전 정답: ${quiz.answer}`);
       console.log(`- 수정 후 정답: ${validation.repairedQuiz.answer}`);
       console.log(`========================================================================\n`);
