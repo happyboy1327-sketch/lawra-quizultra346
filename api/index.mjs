@@ -385,14 +385,62 @@ function normalizeQuiz(quiz) {
     return null;
   }
 
+  // explanation 정규화
+  let normalizedExplanation;
+
+  if (
+    quiz.explanation &&
+    typeof quiz.explanation === "object" &&
+    !Array.isArray(quiz.explanation)
+  ) {
+    const explanationText = normalizeText(
+      quiz.explanation.string ??
+      quiz.explanation.text ??
+      ""
+    );
+
+    // Boolean / boolean / 문자열 "true", "false" 모두 처리
+    const rawBoolean =
+      quiz.explanation.Boolean ??
+      quiz.explanation.boolean ??
+      false;
+
+    let explanationBoolean;
+
+    if (typeof rawBoolean === "boolean") {
+      explanationBoolean = rawBoolean;
+    } else {
+      explanationBoolean =
+        String(rawBoolean).toLowerCase() === "true";
+    }
+
+    normalizedExplanation = {
+      string: explanationText,
+      Boolean: explanationBoolean,
+    };
+  } else {
+    // 기존 문자열 explanation도 호환
+    normalizedExplanation = {
+      string: normalizeText(quiz.explanation),
+      Boolean: true,
+    };
+  }
+
   const normalized = {
     ...quiz,
+
     id: normalizeText(quiz.id),
+
     category: normalizeText(quiz.category),
-    explanation: normalizeText(quiz.explanation),
+
+    explanation: normalizedExplanation,
+
     question: normalizeText(quiz.question),
+
     answer: normalizeText(quiz.answer),
+
     timer_sec: Number(quiz.timer_sec) || 15,
+
     options: Array.isArray(quiz.options)
       ? quiz.options.map((option) => ({
           text: normalizeText(option?.text ?? option),
@@ -401,9 +449,10 @@ function normalizeQuiz(quiz) {
       : [],
   };
 
+  // explanation은 객체이므로 string을 검사
   if (
     !normalized.question ||
-    !normalized.explanation ||
+    !normalized.explanation.string ||
     normalized.options.length !== 4
   ) {
     return null;
@@ -572,7 +621,7 @@ async function validateSingleQuiz(quiz, article) {
   "repairedQuiz": {
     "id": "${quiz.id}",
     "category": "${quiz.category}",
-    "explanation": "[원문 조문 스니펫과 완벽히 부합하도록 수정한 해설]",
+    "explanation": {"string": "[원문 조문 스니펫과 완벽히 부합하도록 수정한 해설]", "Boolean": "true"},
     "question": "[질문 의도와 원문 조문에 맞게 수정한 질문]",
     "options": [
       {"text": "[정답 내용]", "is_correct": true},
