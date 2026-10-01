@@ -55,6 +55,13 @@ let correctCount = 0;
 let timerInterval = null;
 let isAnswered = false;
 
+  function getExplanation(e) {
+  if (typeof e === 'string') {
+    try { return getExplanation(JSON.parse(e)); } catch { return e; }
+  }
+  return e?.string ?? '';
+  }
+ 
 const newQuizSetBtnEl = document.getElementById("newQuizSetBtnEl");
 
 // 새 퀴즈 세트 생성 버튼 이벤트
@@ -205,12 +212,6 @@ function checkAnswer(selectedBtn, quiz) {
   
   // 해설 표시
   // 해설 표시
-function getExplanation(e) {
-  if (typeof e === 'string') {
-    try { return getExplanation(JSON.parse(e)); } catch { return e; }
-  }
-  return e?.string ?? '';
-}
 
 const rawExplanation = getExplanation(quiz.explanation).trim();
 const explanationText = rawExplanation
@@ -309,7 +310,7 @@ function handleEnterReviewMode() {
   <p style='color:var(--danger-color);font-weight:bold'>❌ 내 답: ${q.user_answer_text || '-'}</p>
   <p style='color:var(--success-color);font-weight:bold'>✅ 정답: ${correctText}</p>
   <div style='background-color:#fff3cd;padding:10px;border-radius:5px;margin-top:10px'>
-    <strong>📝 해설:</strong><br>${formatBold(q.explanation || '해설이 아직 준비되지 않았습니다.')}
+    <strong>📝 해설:</strong><br>${formatBold(getExplanation(q.explanation) || '해설이 아직 준비되지 않았습니다.')}
   </div>
 `;
     list.appendChild(div);
