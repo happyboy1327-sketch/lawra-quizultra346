@@ -282,6 +282,7 @@ async function fetchLawArticles(lawId) {
           collectArticle(referencedArticle);
         }
       });
+      console.log (`재귀 조문 찾음`)
     }
 
     // ============================================================
