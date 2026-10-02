@@ -470,7 +470,7 @@ async function generateQuiz(article, retriesLeft = 2) {
     .trim();
 
   const prompt = `
-다음 한국 법령 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요.
+다음 한국 법령 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요. 영어는 절대로 단 한글자도 포함하면 안됩니다.
 
 법령명: ${article.lawName}
 조문번호: 제${article.num}조
