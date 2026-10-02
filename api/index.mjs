@@ -456,7 +456,7 @@ async function generateQuiz(article, retriesLeft = 2) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const refContent = JSON.stringify(article.referencedContent || "").trim();
+  const refContent = String(article.referencedContent || "").trim();
 
   const prompt = `
 다음 한국 법령 조문 및 참조/인용 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요. 영어는 절대로 단 한글자도 포함하면 안됩니다.
