@@ -71,8 +71,6 @@ const VALID_LAW_IDS = [
 ];
 
 const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
-
-// 외부 법령 lawId 조회용 캐시
 const lawIdCache = new Map();
 
 async function getLawIdByName(lawName) {
@@ -110,198 +108,164 @@ async function getLawIdByName(lawName) {
   return null;
 }
 
-// 기존 fetchLawArticles 함수 (타 법률 재귀 조회 포함)
-async function fetchLawArticles(lawId, depth = 0, maxDepth = 2) {
-  if (!OC_USER_ID) {
-    console.error("LAW_GOV_OC 환경 변수가 없음");
-    return [];
+// 참조 추출 (치환 오류 수정)
+function extractReferences(content) {
+  if (!content) return { internal: [], external: [] };
+
+  const externalList = [];
+  const internalSet = new Set();
+
+  const extBlockRegex = /「([^」]+)」\s*((?:제\s*\d+\s*조(?:의\s*\d+)?(?:\s*[,및등\s]+\s*)?)+)/g;
+  let blockMatch;
+
+  while ((blockMatch = extBlockRegex.exec(content)) !== null) {
+    const lawName = blockMatch[1].trim();
+    const articlesChunk = blockMatch[2];
+
+    const artRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
+    let artMatch;
+    while ((artMatch = artRegex.exec(articlesChunk)) !== null) {
+      const articleNum = artMatch[2] ? `제${artMatch[1]}조의${artMatch[2]}` : `제${artMatch[1]}조`;
+      externalList.push({ lawName, articleNum });
+    }
   }
 
-  if (depth > maxDepth) return [];
+  // 외부 인용문 일괄 제거 후 내부 참조 추출
+  const cleanedContent = content.replace(extBlockRegex, "");
 
-  try {
-    const response = await axios.get(LAW_API_URL, {
-      params: {
-        OC: OC_USER_ID,
-        type: "JSON",
-        target: "eflaw",
-        ID: lawId,
-      },
-    });
+  const intRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
+  let intMatch;
+  while ((intMatch = intRegex.exec(cleanedContent)) !== null) {
+    const articleNum = intMatch[2] ? `제${intMatch[1]}조의${intMatch[2]}` : `제${intMatch[1]}조`;
+    internalSet.add(articleNum);
+  }
 
-    const lawData = response.data;
-    const joData =
-      lawData?.["법령"]?.["조문"]?.["조문단위"] ||
-      lawData?.["법령"]?.["조문"];
+  return {
+    internal: [...internalSet],
+    external: externalList,
+  };
+}
 
-    if (!joData) {
-      console.error("법령 조문 데이터 없음");
-      return [];
+// 기본 파싱 함수
+function parseRawArticle(article, lawName) {
+  function getCanonicalArticleNum(art) {
+    const rawNum = String(art?.["조문번호"] || "").trim();
+    const rawGaji = String(art?.["조문가지번호"] || "").trim();
+    const joContent = String(art?.["조문내용"] || "").trim();
+
+    if (rawNum && rawNum !== "0") {
+      const gajiPart = rawGaji && rawGaji !== "0" && rawGaji !== "00" ? `의${rawGaji}` : "";
+      return `제${rawNum}조${gajiPart}`;
     }
 
-    const articles = Array.isArray(joData) ? joData : [joData];
-    const lawName =
-      lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
-
-    function getCanonicalArticleNum(article) {
-      const rawNum = String(article?.["조문번호"] || "").trim();
-      const rawGaji = String(article?.["조문가지번호"] || "").trim();
-      const joContent = String(article?.["조문내용"] || "").trim();
-
-      if (rawNum && rawNum !== "0") {
-        const gajiPart = rawGaji && rawGaji !== "0" && rawGaji !== "00" ? `의${rawGaji}` : "";
-        return `제${rawNum}조${gajiPart}`;
-      }
-
-      const titleMatch = joContent.match(/^제\s*(\d+)\s*조(?:의\s*(\d+))?/);
-      if (titleMatch) {
-        return titleMatch[2] ? `제${titleMatch[1]}조의${titleMatch[2]}` : `제${titleMatch[1]}조`;
-      }
-
-      return "";
+    const titleMatch = joContent.match(/^제\s*(\d+)\s*조(?:의\s*(\d+))?/);
+    if (titleMatch) {
+      return titleMatch[2] ? `제${titleMatch[1]}조의${titleMatch[2]}` : `제${titleMatch[1]}조`;
     }
+    return "";
+  }
 
-    function parseArticle(article) {
-      const num = getCanonicalArticleNum(article);
-      const joContent = String(article?.["조문내용"] || "").trim();
+  const num = getCanonicalArticleNum(article);
+  const joContent = String(article?.["조문내용"] || "").trim();
+  const lines = [];
+  if (joContent) lines.push(joContent);
 
-      const lines = [];
-      if (joContent) lines.push(joContent);
+  const hangTexts = [];
+  const hangRaw = article?.["항"];
+  const hoRaw = article?.["호"];
 
-      const hangTexts = [];
-      const hangRaw = article?.["항"];
-      const hoRaw = article?.["호"];
+  if (hangRaw) {
+    const hangList = Array.isArray(hangRaw) ? hangRaw : [hangRaw];
+    hangList.forEach((h) => {
+      const hLines = [];
+      const hNo = String(h?.["항번호"] || "").trim();
+      let hContent = String(h?.["항내용"] || "").trim();
 
-      if (hangRaw) {
-        const hangList = Array.isArray(hangRaw) ? hangRaw : [hangRaw];
+      if (hContent) {
+        if (hNo && !hContent.startsWith(hNo)) hContent = `${hNo} ${hContent}`;
+        hLines.push(hContent);
+      }
 
-        hangList.forEach((h) => {
-          const hLines = [];
-          const hNo = String(h?.["항번호"] || "").trim();
-          let hContent = String(h?.["항내용"] || "").trim();
-
-          if (hContent) {
-            if (hNo && !hContent.startsWith(hNo)) {
-              hContent = `${hNo} ${hContent}`;
-            }
-            hLines.push(hContent);
-          }
-
-          const innerHo = h?.["호"];
-          if (innerHo) {
-            const hoList = Array.isArray(innerHo) ? innerHo : [innerHo];
-
-            hoList.forEach((ho) => {
-              const hoNo = String(ho?.["호번호"] || "").trim();
-              let hoContent = String(ho?.["호내용"] || "").trim();
-
-              if (hoContent) {
-                if (hoNo && !hoContent.startsWith(hoNo)) {
-                  hoContent = `${hoNo} ${hoContent}`;
-                }
-                hLines.push(`  ${hoContent}`);
-              }
-
-              const innerMok = ho?.["목"];
-              if (innerMok) {
-                const mokList = Array.isArray(innerMok) ? innerMok : [innerMok];
-
-                mokList.forEach((m) => {
-                  const mNo = String(m?.["목번호"] || "").trim();
-                  let mokContent = String(m?.["목내용"] || "").trim();
-
-                  if (mokContent) {
-                    if (mNo && !mokContent.startsWith(mNo)) {
-                      mokContent = `${mNo} ${mokContent}`;
-                    }
-                    hLines.push(`    ${mokContent}`);
-                  }
-                });
-              }
-            });
-          }
-
-          if (hLines.length > 0) {
-            const combinedHang = hLines.join("\n");
-            hangTexts.push(combinedHang);
-            lines.push(combinedHang);
-          }
-        });
-      } else if (hoRaw) {
-        const hoList = Array.isArray(hoRaw) ? hoRaw : [hoRaw];
-
+      const innerHo = h?.["호"];
+      if (innerHo) {
+        const hoList = Array.isArray(innerHo) ? innerHo : [innerHo];
         hoList.forEach((ho) => {
           const hoNo = String(ho?.["호번호"] || "").trim();
           let hoContent = String(ho?.["호내용"] || "").trim();
 
           if (hoContent) {
-            if (hoNo && !hoContent.startsWith(hoNo)) {
-              hoContent = `${hoNo} ${hoContent}`;
-            }
-            hangTexts.push(hoContent);
-            lines.push(`  ${hoContent}`);
+            if (hoNo && !hoContent.startsWith(hoNo)) hoContent = `${hoNo} ${hoContent}`;
+            hLines.push(`  ${hoContent}`);
+          }
+
+          const innerMok = ho?.["목"];
+          if (innerMok) {
+            const mokList = Array.isArray(innerMok) ? innerMok : [innerMok];
+            mokList.forEach((m) => {
+              const mNo = String(m?.["목번호"] || "").trim();
+              let mokContent = String(m?.["목내용"] || "").trim();
+              if (mokContent) {
+                if (mNo && !mokContent.startsWith(mNo)) mokContent = `${mNo} ${mokContent}`;
+                hLines.push(`    ${mokContent}`);
+              }
+            });
           }
         });
       }
 
-      const fullContent = lines.join("\n").trim();
-
-      return {
-        num,
-        content: fullContent,
-        hang: hangTexts,
-        lawName,
-        isDeleted: joContent.includes("삭제") && fullContent.length < 30,
-      };
-    }
-
-    // ============================================================
-    // 내부 참조와 타 법률 참조를 분리해서 추출하는 함수
-    // ============================================================
-    function extractReferences(content) {
-      if (!content) return { internal: [], external: [] };
-
-      const externalList = [];
-      const extRegex = /「([^」]+)」\s*제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
-      let match;
-
-      while ((match = extRegex.exec(content)) !== null) {
-        externalList.push({
-          lawName: match[1].trim(),
-          articleNum: match[3] ? `제${match[2]}조의${match[3]}` : `제${match[2]}조`,
-        });
+      if (hLines.length > 0) {
+        const combinedHang = hLines.join("\n");
+        hangTexts.push(combinedHang);
+        lines.push(combinedHang);
       }
-
-      const cleanedContent = content.replace(extRegex, "");
-      const internalSet = new Set();
-      const intRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
-
-      while ((match = intRegex.exec(cleanedContent)) !== null) {
-        const articleNum = match[2] ? `제${match[1]}조의${match[2]}` : `제${match[1]}조`;
-        internalSet.add(articleNum);
+    });
+  } else if (hoRaw) {
+    const hoList = Array.isArray(hoRaw) ? hoRaw : [hoRaw];
+    hoList.forEach((ho) => {
+      const hoNo = String(ho?.["호번호"] || "").trim();
+      let hoContent = String(ho?.["호내용"] || "").trim();
+      if (hoContent) {
+        if (hoNo && !hoContent.startsWith(hoNo)) hoContent = `${hoNo} ${hoContent}`;
+        hangTexts.push(hoContent);
+        lines.push(`  ${hoContent}`);
       }
+    });
+  }
 
-      return {
-        internal: [...internalSet],
-        external: externalList,
-      };
-    }
+  const fullContent = lines.join("\n").trim();
+  return {
+    num,
+    content: fullContent,
+    hang: hangTexts,
+    lawName,
+    isDeleted: joContent.includes("삭제") && fullContent.length < 30,
+  };
+}
+
+async function fetchLawArticles(lawId, targetArticleNum = null, depth = 0, maxDepth = 2) {
+  if (!OC_USER_ID || depth > maxDepth) return [];
+
+  try {
+    const response = await axios.get(LAW_API_URL, {
+      params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
+    });
+
+    const lawData = response.data;
+    const joData = lawData?.["법령"]?.["조문"]?.["조문단위"] || lawData?.["법령"]?.["조문"];
+    if (!joData) return [];
+
+    const articles = Array.isArray(joData) ? joData : [joData];
+    const lawName = lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
     const articleMap = new Map();
-
-    articles.forEach((article) => {
-      const parsed = parseArticle(article);
-      if (parsed.num) {
-        articleMap.set(parsed.num, parsed);
-      }
+    articles.forEach((art) => {
+      const parsed = parseRawArticle(art, lawName);
+      if (parsed.num) articleMap.set(parsed.num, parsed);
     });
 
     const collected = new Map();
     const visited = new Set();
 
-    
-    // 재귀 수집 함수 (인용 조항 개수에 따른 재귀 깊이 제어)
-    // ============================================================
     async function collectArticle(article) {
       if (!article?.num || article.isDeleted) return;
 
@@ -313,36 +277,31 @@ async function fetchLawArticles(lawId, depth = 0, maxDepth = 2) {
 
       const { internal, external } = extractReferences(article.content);
       const totalRefCount = internal.length + external.length;
-
-      // 인용 조항이 1개면 1회만 재귀조회(depth + 1), 2개 이상이면 기존 maxDepth 적용
       const effectiveMaxDepth = totalRefCount === 1 ? depth + 1 : maxDepth;
-
       if (depth >= effectiveMaxDepth) return;
 
-      // 1. 내부 참조 조문 수집
       for (const refNum of internal) {
         const refArticle = articleMap.get(refNum);
-        if (refArticle) {
-          await collectArticle(refArticle);
-        }
+        if (refArticle) await collectArticle(refArticle);
       }
 
-      // 2. 외부 타 법률 참조 조문 수집
       for (const ext of external) {
         const extLawId = await getLawIdByName(ext.lawName);
         if (extLawId && extLawId !== lawId) {
-          const extArticles = await fetchLawArticles(extLawId, depth + 1, effectiveMaxDepth);
+          const extArticles = await fetchLawArticles(extLawId, ext.articleNum, depth + 1, effectiveMaxDepth);
           extArticles.forEach((extArt) => {
-            if (extArt.num === ext.articleNum) {
-              const extKey = `${extArt.lawName}_${extArt.num}`;
-              collected.set(extKey, extArt);
-            }
+            collected.set(`${extArt.lawName}_${extArt.num}`, extArt);
           });
         }
       }
     }
-    for (const parsed of articleMap.values()) {
-      await collectArticle(parsed);
+
+    if (targetArticleNum && articleMap.has(targetArticleNum)) {
+      await collectArticle(articleMap.get(targetArticleNum));
+    } else {
+      for (const parsed of articleMap.values()) {
+        await collectArticle(parsed);
+      }
     }
 
     return [...collected.values()];
@@ -351,21 +310,39 @@ async function fetchLawArticles(lawId, depth = 0, maxDepth = 2) {
     return [];
   }
 }
- 
-async function fetchRandomArticle(law) {
-  const articles = await fetchLawArticles(law.lawId);
 
-  if (articles.length === 0) {
-    console.warn("사용 가능한 조문 없음:", law.lawName);
+// 랜덤 조문 선택 성능 수정 (목록만 가져온 후 선택한 단일 조문만 재귀 수집)
+async function fetchRandomArticle(law) {
+  try {
+    const response = await axios.get(LAW_API_URL, {
+      params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: law.lawId },
+    });
+
+    const joData = response.data?.["법령"]?.["조문"]?.["조문단위"] || response.data?.["법령"]?.["조문"];
+    if (!joData) return null;
+
+    const articles = Array.isArray(joData) ? joData : [joData];
+    const lawName = response.data?.["법령"]?.["기본정보"]?.["법령명_한글"] || law.lawName;
+
+    const validNums = [];
+    articles.forEach((art) => {
+      const parsed = parseRawArticle(art, lawName);
+      if (parsed.num && !parsed.isDeleted) validNums.push(parsed.num);
+    });
+
+    if (validNums.length === 0) return null;
+
+    const selectedNum = validNums[Math.floor(Math.random() * validNums.length)];
+    const collected = await fetchLawArticles(law.lawId, selectedNum);
+    return collected.find((a) => a.num === selectedNum) || null;
+  } catch (err) {
+    console.error(`fetchRandomArticle 오류 (${law.lawName}):`, err.message);
     return null;
   }
-
-  return articles[Math.floor(Math.random() * articles.length)];
 }
 
 function isRateLimitError(error) {
   const message = String(error?.message || "");
-
   return (
     error?.statusCode === 429 ||
     error?.status === 429 ||
@@ -382,86 +359,42 @@ let lastMistralCallAt = 0;
 async function throttleMistralCall() {
   const now = Date.now();
   const wait = lastMistralCallAt + MISTRAL_MIN_INTERVAL_MS - now;
-  if (wait > 0) {
-    await sleep(wait);
-  }
+  if (wait > 0) await sleep(wait);
   lastMistralCallAt = Date.now();
 }
 
 function normalizeText(value) {
-  if (typeof value === "string") {
-    return value.trim();
-  }
-
-  if (value == null) {
-    return "";
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .map(normalizeText)
-      .filter(Boolean)
-      .join("\n");
-  }
-
+  if (typeof value === "string") return value.trim();
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.map(normalizeText).filter(Boolean).join("\n");
   if (typeof value === "object") {
-    // 모델이 { text: "..." }, { content: "..." } 형태로 반환하는 경우
     const preferredKeys = ["text", "content", "explanation", "reason", "detail"];
-
     for (const key of preferredKeys) {
       if (value[key] != null) {
         const text = normalizeText(value[key]);
         if (text) return text;
       }
     }
-
-    // 위 필드가 없으면 객체 전체를 안전한 JSON 문자열로 변환
     return JSON.stringify(value);
   }
-
   return String(value);
 }
 
-function normalizeQuiz(quiz) {
-  if (!quiz || typeof quiz !== "object") {
-    return null;
-  }
+function normalizeQuiz(quiz, allowFalseBoolean = false) {
+  if (!quiz || typeof quiz !== "object") return null;
 
-  // explanation 정규화
   let normalizedExplanation;
 
-  if (
-    quiz.explanation &&
-    typeof quiz.explanation === "object" &&
-    !Array.isArray(quiz.explanation)
-  ) {
-    const explanationText = normalizeText(
-      quiz.explanation.string ??
-      quiz.explanation.text ??
-      ""
-    );
-
-    // Boolean / boolean / 문자열 "true", "false" 모두 처리
-    const rawBoolean =
-      quiz.explanation.Boolean ??
-      quiz.explanation.boolean ??
-      false;
-
-    let explanationBoolean;
-
-    if (typeof rawBoolean === "boolean") {
-      explanationBoolean = rawBoolean;
-    } else {
-      explanationBoolean =
-        String(rawBoolean).toLowerCase() === "true";
-    }
+  if (quiz.explanation && typeof quiz.explanation === "object" && !Array.isArray(quiz.explanation)) {
+    const explanationText = normalizeText(quiz.explanation.string ?? quiz.explanation.text ?? "");
+    const rawBoolean = quiz.explanation.Boolean ?? quiz.explanation.boolean ?? false;
+    const explanationBoolean = typeof rawBoolean === "boolean" ? rawBoolean : String(rawBoolean).toLowerCase() === "true";
 
     normalizedExplanation = {
       string: explanationText,
       Boolean: explanationBoolean,
     };
   } else {
-    // 기존 문자열 explanation도 호환
     normalizedExplanation = {
       string: normalizeText(quiz.explanation),
       Boolean: true,
@@ -470,19 +403,12 @@ function normalizeQuiz(quiz) {
 
   const normalized = {
     ...quiz,
-
     id: normalizeText(quiz.id),
-
     category: normalizeText(quiz.category),
-
     explanation: normalizedExplanation,
-
     question: normalizeText(quiz.question),
-
     answer: normalizeText(quiz.answer),
-
     timer_sec: Number(quiz.timer_sec) || 15,
-
     options: Array.isArray(quiz.options)
       ? quiz.options.map((option) => ({
           text: normalizeText(option?.text ?? option),
@@ -491,37 +417,22 @@ function normalizeQuiz(quiz) {
       : [],
   };
 
-  // explanation은 객체이므로 string을 검사
-  if (
-    !normalized.question ||
-    !normalized.explanation.string ||
-    normalized.explanation.Boolean !== true ||
-    normalized.options.length !== 4
-  ) {
+  const isBooleanValid = allowFalseBoolean ? true : normalized.explanation.Boolean === true;
+
+  if (!normalized.question || !normalized.explanation.string || !isBooleanValid || normalized.options.length !== 4) {
     return null;
   }
 
-  const correctCount = normalized.options.filter(
-    (option) => option.is_correct
-  ).length;
-
-  if (correctCount !== 1) {
-    return null;
-  }
+  const correctCount = normalized.options.filter((option) => option.is_correct).length;
+  if (correctCount !== 1) return null;
 
   return normalized;
 }
 
 async function generateQuiz(article, retriesLeft = 2) {
-  if (!article?.lawName || !article?.num) {
-    console.error("유효하지 않은 article:", article);
-    return null;
-  }
+  if (!article?.lawName || !article?.num) return null;
 
-  const content = String(article.content || "")
-    .replace(/"/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
+  const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
 
   const prompt = `
 다음 한국 법령 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요. 영어는 절대로 단 한글자도 포함하면 안됩니다.
@@ -534,7 +445,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 □ 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적 법률 사례 문제를 만드세요.
 □ 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 자세히 작성하시오.
 □ 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
-□ ⚠️조문 원문에서 기간이 나오는 부분은 반드시 볼드(e.g. **2개월**)표시하고 예의 주시해서 날짜 계산하시어 해설에도 똑같이 원문에 있는 기간을 대응작성하시오.
+□ ⚠️️조문 원문에서 기간이 나오는 부분은 반드시 볼드(e.g. **2개월**)표시하고 예의 주시해서 날짜 계산하시어 해설에도 똑같이 원문에 있는 기간을 대응작성하시오.
 □ 해설 내 텍스트가 정확한 설명이 아닐 경우, 혹은 아래의 경우에는 explanation 내 Boolean 필드에 false 처리하시오.
 - ⚠️인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석될 여지가 있을 경우
 - ⚠️없는 조문을 지어내는 경우
@@ -549,7 +460,7 @@ async function generateQuiz(article, retriesLeft = 2) {
 □ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하고, 수식 관계를 명확히 쉼표로 구분하시오.
 □ 반드시 순수 JSON만 출력하세요.
 □ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
-□ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\n)을 사용하세요.
+□ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\\n)을 사용하세요.
 □ 해설엔 질문의 논리에 부합하고 정확한 법령조문 및 항 내용을 인용하시오.
 □ 오류 WORST 3
  - 질문의 목적과 의도, 법적 해석에 모두 어긋나는 정답, 해설이 있는경우
@@ -576,7 +487,6 @@ async function generateQuiz(article, retriesLeft = 2) {
 
   try {
     await throttleMistralCall();
-
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
@@ -586,27 +496,12 @@ async function generateQuiz(article, retriesLeft = 2) {
     });
 
     let responseText = response?.choices?.[0]?.message?.content;
+    if (!responseText || typeof responseText !== "string") return null;
 
-    if (!responseText || typeof responseText !== "string") {
-      return null;
-    }
-
-    responseText = responseText
-      .replace(/^\s*```json\s*/i, "")
-      .replace(/^\s*```\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-
+    responseText = responseText.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 
     const quiz = JSON.parse(responseText);
-const normalizedQuiz = normalizeQuiz(quiz);
-
-if (!normalizedQuiz) {
-  console.error("유효하지 않은 퀴즈 응답:", quiz);
-  return null;
-}
-
-return normalizedQuiz;
+    return normalizeQuiz(quiz);
   } catch (err) {
     if (isRateLimitError(err) && retriesLeft > 0) {
       await sleep(1500);
@@ -618,23 +513,10 @@ return normalizedQuiz;
 }
 
 async function validateSingleQuiz(quiz, article) {
-  const sourceText = String(article?.content || "")
-    .replace(/[ \t]+/g, " ")
-    .trim();
-
-  console.log("[검증 및 자동수정 시작]", {
-    lawName: article?.lawName,
-    articleNumber: article?.num,
-    sourceLength: sourceText.length,
-    sourcePreview: sourceText.slice(0, 320),
-  });
+  const sourceText = String(article?.content || "").replace(/[ \t]+/g, " ").trim();
 
   if (!sourceText) {
-    return {
-      valid: false,
-      reason: "원문 누락",
-      repairedQuiz: null,
-    };
+    return { valid: false, reason: "원문 누락", repairedQuiz: null };
   }
 
   const validationPayload = {
@@ -702,28 +584,18 @@ async function validateSingleQuiz(quiz, article) {
     });
 
     let resultText = response?.choices?.[0]?.message?.content;
-
     if (!resultText || typeof resultText !== "string") {
       return { valid: false, reason: "검증 응답 비어 있음", repairedQuiz: null };
     }
 
-    resultText = resultText
-      .replace(/^\s*```json\s*/i, "")
-      .replace(/^\s*```\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
+    resultText = resultText.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 
     const parsed = JSON.parse(resultText);
-
     if (typeof parsed.valid !== "boolean") {
-      return {
-        valid: false,
-        reason: "검증 결과 형식 오류",
-        repairedQuiz: null,
-      };
+      return { valid: false, reason: "검증 결과 형식 오류", repairedQuiz: null };
     }
 
-    const repaired = parsed.repairedQuiz ? normalizeQuiz(parsed.repairedQuiz) : null;
+    const repaired = parsed.repairedQuiz ? normalizeQuiz(parsed.repairedQuiz, true) : null;
 
     return {
       valid: parsed.valid,
@@ -732,9 +604,10 @@ async function validateSingleQuiz(quiz, article) {
     };
   } catch (err) {
     console.error("Mistral 검증/수정 호출 오류:", err.message);
+    // API 오류 시 검증 통과시키지 않고 안전하게 false 처리하여 재시도 유도
     return {
-      valid: true,
-      reason: "검증 API 호출 실패로 임시 통과",
+      valid: false,
+      reason: "검증 API 호출 실패 (재시도 필요)",
       repairedQuiz: null,
     };
   }
@@ -750,37 +623,26 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
     const quiz = await generateQuiz(article);
     if (!quiz) continue;
 
-    const validation = await validateSingleQuiz(quiz, article);
+    let validation = await validateSingleQuiz(quiz, article);
 
     if (validation?.valid === true) {
-  console.log(
-    `[슬롯 ${slotIndex}] 1차 문제 생성 및 검증 성공 (시도 ${attempt})`
-  );
+      console.log(`[슬롯 ${slotIndex}] 1차 문제 생성 및 검증 성공 (시도 ${attempt})`);
+      const revalidation = await validateSingleQuiz(quiz, article);
 
-  // 강제 추가 검증
-  const revalidation = await validateSingleQuiz(quiz, article);
+      if (revalidation?.valid === true) {
+        console.log(`[슬롯 ${slotIndex}] 2차 강제 검증까지 성공 (시도 ${attempt})`);
+        return quiz;
+      }
 
-  if (revalidation?.valid === true) {
-    console.log(
-      `[슬롯 ${slotIndex}] 2차 강제 검증까지 성공 (시도 ${attempt})`
-    );
-    return quiz;
-  }
+      console.log(`[슬롯 ${slotIndex}] 2차 강제 검증 실패 → 2차 결과 적용`);
+      validation = revalidation;
+    }
 
-  console.log(
-    `[슬롯 ${slotIndex}] 2차 강제 검증 실패 → 재시도`
-  );
-}
-
-
-// 2. 검증 탈락 시 스니펫 기반 자동 수정본(repairedQuiz) 채택 및 디버깅 데이터 바인딩
     if (validation?.repairedQuiz) {
       console.log(`\n================ [슬롯 ${slotIndex} 자동 수정 내역 디버깅] ================`);
       console.log(`- 사유: ${validation?.reason}`);
       console.log(`- 수정 전 질문: ${quiz.question}`);
       console.log(`- 수정 후 질문: ${validation.repairedQuiz.question}`);
-      console.log(`- 수정 전 해설은 ${quiz.explanation?.string}`);
-      console.log(`- 수정 후 해설은 ${validation.repairedQuiz.explanation?.string}`);
       console.log(`- 수정 전 정답: ${quiz.answer}`);
       console.log(`- 수정 후 정답: ${validation.repairedQuiz.answer}`);
       console.log(`========================================================================\n`);
@@ -789,17 +651,10 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
         ...validation.repairedQuiz,
         isRepaired: true,
         repairReason: validation.reason,
-        debugInfo: {
-          originalQuestion: quiz.question,
-          originalAnswer: quiz.answer,
-          originalExplanation: quiz.explanation,
-        },
       };
     }
 
-    console.warn(
-      `[슬롯 ${slotIndex}] 검증 및 자동수정 실패 (시도 ${attempt}) - ${validation?.reason}`
-    );
+    console.warn(`[슬롯 ${slotIndex}] 검증 및 자동수정 실패 (시도 ${attempt}) - ${validation?.reason}`);
   }
 
   console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증/자동수정 시도 실패`);
@@ -808,24 +663,11 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
 
 app.get("/api/lawquizzes/latest", async (req, res) => {
   try {
-    const snapshot = await db
-      .collection("law_quizzes")
-      .orderBy("createdAt", "desc")
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return res.json([]);
-    }
+    const snapshot = await db.collection("law_quizzes").orderBy("createdAt", "desc").limit(1).get();
+    if (snapshot.empty) return res.json([]);
 
     const data = snapshot.docs[0].data();
-
-    const quizzes = Array.isArray(data.quizzes)
-      ? data.quizzes
-      : data.quizzes
-        ? Object.values(data.quizzes)
-        : [];
-
+    const quizzes = Array.isArray(data.quizzes) ? data.quizzes : data.quizzes ? Object.values(data.quizzes) : [];
     return res.json(quizzes);
   } catch (err) {
     console.error("최신 퀴즈 조회 오류:", err);
@@ -836,13 +678,10 @@ app.get("/api/lawquizzes/latest", async (req, res) => {
 app.post("/api/lawquizzes/new", async (req, res) => {
   try {
     console.log("=== 병렬 퀴즈 세트 생성 시작 ===");
-
-    // 5개의 퀴즈를 동시에 병렬로 생성
     const quizPromises = [1, 2, 3, 4, 5].map((index) => generateValidQuizSlot(index));
     const results = await Promise.all(quizPromises);
 
     const newQuizzes = results.filter(Boolean);
-
     console.log(`=== 퀴즈 세트 생성 완료: ${newQuizzes.length}/5 ===`);
 
     if (newQuizzes.length === 0) {
@@ -853,18 +692,15 @@ app.post("/api/lawquizzes/new", async (req, res) => {
     }
 
     const quizSetId = String(Date.now());
-
     await db.collection("law_quizzes").doc(quizSetId).set({
       createdAt: Date.now(),
       quizzes: newQuizzes,
     });
 
     console.log("Firestore 저장 완료:", quizSetId);
-
     return res.json(newQuizzes);
   } catch (err) {
     console.error("퀴즈 세트 생성 중 오류 발생:", err);
-
     return res.status(500).json({
       error: "퀴즈 생성 오류",
       message: err?.message || "알 수 없는 오류",
@@ -875,19 +711,13 @@ app.post("/api/lawquizzes/new", async (req, res) => {
 app.get("/api/mistral-models", async (req, res) => {
   try {
     const response = await axios.get("https://api.mistral.ai/v1/models", {
-      headers: {
-        Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}`,
-      },
+      headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
     });
 
-    const models = Array.isArray(response.data?.data)
-      ? response.data.data.map((model) => model.id).filter(Boolean)
-      : [];
-
+    const models = Array.isArray(response.data?.data) ? response.data.data.map((m) => m.id).filter(Boolean) : [];
     return res.json({ models });
   } catch (err) {
     console.error("Mistral 모델 목록 조회 오류:", err.message);
-
     return res.status(err?.response?.status || 500).json({
       error: "Mistral 모델 목록 조회 실패",
       message: err?.response?.data?.message || err.message,
