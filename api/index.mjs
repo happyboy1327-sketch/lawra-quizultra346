@@ -364,7 +364,7 @@ const LawParser = {
       content: fullContent,
       hang: hangTexts,
       lawName,
-      isDeleted: joContent.includes("삭제") && fullContent.length < 30,
+      isDeleted: joContent.includes("삭제") && fullContent.length < 20,
     };
   }
 };
