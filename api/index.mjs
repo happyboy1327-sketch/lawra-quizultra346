@@ -117,6 +117,9 @@ const Utils = {
                     normalized.options.length === 4 &&
                     normalized.options.filter(o => o.is_correct).length === 1;
 
+    normalized.explanation.string = normalized.explanation.string
+  .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
+
     return isValid ? normalized : null;
   }
 };
