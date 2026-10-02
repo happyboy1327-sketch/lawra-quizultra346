@@ -442,13 +442,25 @@ const QuizService = {
       }
 
       if (validation?.repairedQuiz) {
-        return {
-          ...validation.repairedQuiz,
-          isRepaired: true,
-          repairReason: validation.reason,
-          debugInfo: { originalQuestion: quiz.question, originalAnswer: quiz.answer, originalExplanation: quiz.explanation },
-        };
-      }
+  // 1차 수정본을 다시 검증에 전달
+  const secondValidation = await this.validateSingleQuiz(validation.repairedQuiz, article);
+
+  // 2차 수정본이 새로 나왔다면 2차 수정본을, 2차 검증을 바로 통과했으면 1차 수정본을 채택
+  const finalRepairedQuiz = secondValidation?.repairedQuiz || validation.repairedQuiz;
+  const finalReason = secondValidation?.repairedQuiz ? secondValidation.reason : validation.reason;
+    console.log(`[슬롯 ${slotIndex}] false문제 최종 재생성/검증 성공`);
+
+  return {
+    ...finalRepairedQuiz,
+    isRepaired: true,
+    repairReason: finalReason,
+    debugInfo: {
+      originalQuestion: quiz.question,
+      originalAnswer: quiz.answer,
+      originalExplanation: quiz.explanation,
+    },
+  };
+}
     }
     return console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증/자동수정 시도 실패`), null;
   }
