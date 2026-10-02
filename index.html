@@ -120,6 +120,10 @@ function formatBold(text) {
   if (!text || !String(text).trim()) return '';
   return String(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 }
+  function removeBold(text) {
+  if (!text || !String(text).trim()) return '';
+  return String(text).replace(/\*\*(.+?)\*\*/g, '$1').replace(/<\/?(strong|b)>/gi, '');
+  }
 
   function displayText(value) {
   if (typeof value === "string") {
@@ -171,7 +175,7 @@ function updateQuizUI() {
   quiz.options.forEach((option, idx) => {
     const btn = document.createElement('button');
     btn.className = 'option-button';
-    btn.textContent = `${idx + 1}. ${option.text}`;
+    btn.textContent = `${idx + 1}. ${removeBold(option.text)}`;
     btn.dataset.isCorrect = option.is_correct;
     btn.onclick = () => checkAnswer(btn, quiz);
     container.appendChild(btn);
