@@ -417,6 +417,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 9. 해설 내에 예시를 잘못 들었으면 false 처리하시오.
 10. 질문에 맞는 정답과 해설의 첫 두 문장 간 내용이 불합치하거나 핀트가 어긋나면 valid: false 처리하십시오.
 10-1. 이후 해설에서 잘못된 법리적 설명이 들어갈 경우 valid: false 처리하십시오.
+10-2. 법률 및 행정 용어를 혼동했다고 판단된다면 valid: false 처리하십시오. 
 11. valid: false인 경우, 오직 [원문 조문 및 참조/인용 조문] 텍스트 스니펫에 근거하여 질문, 4지선다 보기(정답 1개 필수), 정답(answer), 해설(explanation)을 즉시 교정한 repairedQuiz 객체를 반드시 생성하십시오.
 12. valid: true인 경우 repairedQuiz는 null로 설정하십시오.
 
