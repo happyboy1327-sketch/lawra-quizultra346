@@ -399,25 +399,22 @@ const LawService = {
   const { internal, external } = extractReferences(article.content);
   const totalRefCount = internal.length + external.length;
 
-  // 단일 참조 시 깊이 한도 조절
-  const effectiveMaxDepth = totalRefCount === 1 ? Math.min(currentDepth + 1, maxDepth) : maxDepth;
+  const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
   if (currentDepth >= effectiveMaxDepth) return;
 
-  // 병렬 처리로 변경 & currentLawId 비교 적용
-  await Promise.all([
-    ...internal.map(refNum => 
-      collectArticle(currentLawId, refNum, currentDepth + 1, maxDepth)
-    ),
-    ...external.map(async (ext) => {
-      const targetLawId = await getLawIdByName(ext.lawName);
-      if (targetLawId && targetLawId !== currentLawId) {
-        await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, maxDepth);
-      }
-    })
-  ]);
-};
+  // 1. 내부 참조 (순서 보장을 위해 순차 처리)
+  for (const refNum of internal) {
+    await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
+  }
 
-await collectArticle(lawId, parsed.num);
+  // 2. 외부 참조 (targetLawId !== currentLawId 버그 수정 적용)
+  for (const ext of external) {
+    const targetLawId = await getLawIdByName(ext.lawName);
+    if (targetLawId && targetLawId !== currentLawId) {
+      await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
+    }
+  }
+};
           const selfKey = `${lawId}_${parsed.num}`;
           const referencedContent = Array.from(collected.entries())
             .filter(([k]) => k !== selfKey)
