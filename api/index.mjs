@@ -138,39 +138,103 @@ const LawParser = {
     return titleMatch ? `제${titleMatch[1]}조${titleMatch[2] ? `의${titleMatch[2]}` : ""}` : "";
   },
 
-  extractListLines(items, noKey, contentKey, indent = "") {
-    if (!items) return [];
-    return (Array.isArray(items) ? items : [items]).reduce((lines, item) => {
-      const no = String(item[noKey] || "").trim();
-      let content = String(item[contentKey] || "").trim();
-      if (content) {
-        if (no && !content.startsWith(no)) content = `${no} ${content}`;
-        lines.push(`${indent}${content}`);
+  formatItemLine(no, content, indent = "") {
+    const rawNo = String(no || "").trim();
+    let rawContent = String(content || "").trim();
+    if (!rawContent && !rawNo) return "";
+    if (!rawContent) return `${indent}${rawNo}`;
+
+    if (rawNo) {
+      const coreNo = rawNo.replace(/(호|목|항)$/, "").trim();
+      const escapedCore = coreNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`^(${escapedCore}|${rawNo}|\\d+\\.|[가-하]\\.)\\s*`);
+      
+      if (pattern.test(rawContent)) {
+        return `${indent}${rawContent}`;
+      } else {
+        const prefix = rawNo.endsWith(".") || rawNo.startsWith("①") || rawNo.startsWith("제") ? rawNo : `${rawNo}.`;
+        return `${indent}${prefix} ${rawContent}`;
       }
-      return lines;
-    }, []);
+    }
+    return `${indent}${rawContent}`;
+  },
+
+  parseSubItems(container, childKey, noKey, contentKey, nextChildKey, nextNoKey, nextContentKey, indent) {
+    if (!container) return [];
+    const items = Array.isArray(container[childKey])
+      ? container[childKey]
+      : container[childKey] ? [container[childKey]] : [];
+
+    const lines = [];
+    items.forEach(item => {
+      const line = this.formatItemLine(item[noKey], item[contentKey], indent);
+      if (line) lines.push(line);
+
+      if (nextChildKey && item[nextChildKey]) {
+        const subLines = this.parseSubItems(
+          item,
+          nextChildKey,
+          nextNoKey,
+          nextContentKey,
+          null,
+          null,
+          null,
+          indent + "  "
+        );
+        lines.push(...subLines);
+      }
+    });
+    return lines;
   },
 
   parseArticle(article, lawName) {
     const joContent = String(article?.["조문내용"] || "").trim();
     const num = this.getCanonicalArticleNum(article, joContent);
-    const lines = joContent ? [joContent] : [];
-    const hangTexts = [];
+    const title = String(article?.["조문제목"] || "").trim();
+    
+    const articleHeader = num ? `${num}${title ? (title.startsWith("(") ? title : `(${title})`) : ""}` : "";
 
     const hangs = article?.["항"];
     const hos = article?.["호"];
 
+    const lines = [];
+    const hangTexts = [];
+
+    if (articleHeader) {
+      lines.push(articleHeader);
+    }
+
     if (hangs) {
-      (Array.isArray(hangs) ? hangs : [hangs]).forEach(h => {
-        const hLines = this.extractListLines(h, "항번호", "항내용");
-        
-        if (h?.["호"]) {
-          (Array.isArray(h["호"]) ? h["호"] : [h["호"]]).forEach(ho => {
-            hLines.push(...this.extractListLines(ho, "호번호", "호내용", "  "));
-            if (ho?.["목"]) hLines.push(...this.extractListLines(ho["목"], "목번호", "목내용", "    "));
-          });
+      const hangList = Array.isArray(hangs) ? hangs : [hangs];
+      hangList.forEach(h => {
+        const hLines = [];
+        const hText = String(h?.["항내용"] || "").trim();
+        const hNo = String(h?.["항번호"] || "").trim();
+
+        if (hText) {
+          let cleanHText = hText;
+          if (articleHeader && cleanHText.startsWith(articleHeader)) {
+            cleanHText = cleanHText.replace(articleHeader, "").trim();
+          }
+          if (cleanHText) {
+            hLines.push(this.formatItemLine(hNo, cleanHText, ""));
+          }
         }
-        
+
+        if (h?.["호"]) {
+          const hoLines = this.parseSubItems(
+            h,
+            "호",
+            "호번호",
+            "호내용",
+            "목",
+            "목번호",
+            "목내용",
+            "  "
+          );
+          hLines.push(...hoLines);
+        }
+
         if (hLines.length > 0) {
           const joined = hLines.join("\n");
           hangTexts.push(joined);
@@ -178,9 +242,32 @@ const LawParser = {
         }
       });
     } else if (hos) {
-      const hoLines = this.extractListLines(hos, "호번호", "호내용", "  ");
-      hangTexts.push(...hoLines);
-      lines.push(...hoLines);
+      const hoLines = this.parseSubItems(
+        article,
+        "호",
+        "호번호",
+        "호내용",
+        "목",
+        "목번호",
+        "목내용",
+        "  "
+      );
+      if (hoLines.length > 0) {
+        const joined = hoLines.join("\n");
+        hangTexts.push(joined);
+        lines.push(joined);
+      }
+    } else {
+      if (joContent) {
+        let contentOnly = joContent;
+        if (articleHeader && contentOnly.startsWith(articleHeader)) {
+          contentOnly = contentOnly.substring(articleHeader.length).trim();
+        }
+        if (contentOnly) {
+          lines.push(contentOnly);
+          hangTexts.push(contentOnly);
+        }
+      }
     }
 
     const fullContent = lines.join("\n").trim();
@@ -288,7 +375,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 반드시 순수 JSON만 출력하세요.
 □ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
 □ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\\n)을 사용하세요.
-□ 해설엔 질문의 논리에 부합하고 정확한 법령조문 및 항 내용을 인용하시오.
+□ 해설엔 질문의 논리에 부합하고 정확한 법령 조문(조, 항, 호, 목)을 명확히 인용하며, 특히 호/목에 해당하는 내용일 경우 해당 호/목까지 정확히 인용(예: 도로교통법 제160조제3항제1호)하여 작성하시오.
 □ 오류 WORST 3
  - 질문의 목적과 의도, 법적 해석에 모두 어긋나는 정답, 해설이 있는경우
  - 실제 법령에 맞지 않는 정답을 제시할 경우 (⚠️어쨌든 수시 적성검사를 받은 병원의 장은 절대로 정답이 아니니 내지 마시오.)
@@ -299,7 +386,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
   "concept_summary": "[문제 푸는 목표, 법률이 적용되는 주체, 법률을 어떻게 해석하는지의 의도, 준용 조항]",
-  "explanation": {"string": "[인용된 법률 조문과 일치하고 상통하는 상세 해설 및 정확한 준용 조항]", "Boolean": "true"},
+  "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설 및 정확한 준용 조항]", "Boolean": "true"},
   "question": "[질문 내용]",
   "options": [
     {"text": "[정답 내용]", "is_correct": true},
@@ -320,11 +407,11 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 2. 상관관계와 인과관계, 선후관계가 올바르지 않으며, 유사 법률, 대립되는 법률을 혼동했다면 false 처리하시오.
 3. 질문에서 의도한 기간 조건이 정답에서 제대로 계산되었는지 실제 법령과 비교하며 검사하시오. 시효 기간을 실제 법령과 다르게 잘못 서술한 경우 false 처리하시오.
 4. 권리, 의무, 원칙, 예외, 가능 등의 사항과 준용 조항을 착각하여 실제 법령에 맞지 않게 잘못 해석했다면 false 처리하시오.
- → 해설 내 인용 및 준용 조항이 조금이라도 애매하거나 법적으로 잘못 해석되어 있거나 조항 번호를 1자라도 잘못 적은 경우, false 처리하시오.
+ → 해설 내 인용 및 준용 조항이 조금이라도 애매하거나 법적으로 잘못 해석되어 있거나 조항 번호(조, 항, 호, 목)를 1자라도 잘못 적은 경우, false 처리하시오.
 5. 실제로 없는 법령 조문 및 조항, 벌칙을 지어내진 않았는지, 실제 적용될 법령의 조항 번호를 착각 및 환각했는지 확인하시오.
 6. 전혀 관련없는 법령 조문을 질문 및 해설에 끼어넣었다고 판단되면 false 처리하시오.
 7. 해당 법령의 권리·의무·제재·절차 등이 문제에서 제시된 주체에게 실제로 적용되는지 확인하시오.
-8. 질문이 묻는 본질(예: 소멸시효 기간), 정답 보기의 내용, 해설 내 법령 인용 및 수치/시점이 서로 완벽히 부합하는지 확인하시오.
+8. 질문이 묻는 본질(예: 소멸시효 기간), 정답 보기의 내용, 해설 내 법령 인용(조, 항, 호, 목) 및 수치/시점이 서로 완벽히 부합하는지 확인하시오.
 9. 해설 내에 예시를 잘못 들었으면 false 처리하시오.
 10. 질문에 맞는 정답과 해설의 첫 두 문장 간 내용이 불합치하거나 핀트가 어긋나면 valid: false 처리하십시오.
 11. valid: false인 경우, 오직 [원문 조문 및 참조/인용 조문] 텍스트 스니펫에 근거하여 질문, 4지선다 보기(정답 1개 필수), 정답(answer), 해설(explanation)을 즉시 교정한 repairedQuiz 객체를 반드시 생성하십시오.
@@ -442,32 +529,29 @@ const QuizService = {
       }
 
       if (validation?.repairedQuiz) {
-  // 1차 수정본을 다시 검증에 전달
-  const secondValidation = await this.validateSingleQuiz(validation.repairedQuiz, article);
+        const secondValidation = await this.validateSingleQuiz(validation.repairedQuiz, article);
+        const finalRepairedQuiz = secondValidation?.repairedQuiz || validation.repairedQuiz;
+        const finalReason = secondValidation?.repairedQuiz ? secondValidation.reason : validation.reason;
+        console.log(`[슬롯 ${slotIndex}] false문제 최종 재생성/검증 성공`);
 
-  // 2차 수정본이 새로 나왔다면 2차 수정본을, 2차 검증을 바로 통과했으면 1차 수정본을 채택
-  const finalRepairedQuiz = secondValidation?.repairedQuiz || validation.repairedQuiz;
-  const finalReason = secondValidation?.repairedQuiz ? secondValidation.reason : validation.reason;
-    console.log(`[슬롯 ${slotIndex}] false문제 최종 재생성/검증 성공`);
-
-  return {
-    ...finalRepairedQuiz,
-    isRepaired: true,
-    repairReason: finalReason,
-    debugInfo: {
-      originalQuestion: quiz.question,
-      originalAnswer: quiz.answer,
-      originalExplanation: quiz.explanation,
-    },
-  };
-}
+        return {
+          ...finalRepairedQuiz,
+          isRepaired: true,
+          repairReason: finalReason,
+          debugInfo: {
+            originalQuestion: quiz.question,
+            originalAnswer: quiz.answer,
+            originalExplanation: quiz.explanation,
+          },
+        };
+      }
     }
     return console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증/자동수정 시도 실패`), null;
   }
 };
 
 // ============================================================================
-// 5. API 라우팅 (API Routes - 기존 구성 유지)
+// 5. API 라우팅 (API Routes)
 // ============================================================================
 app.get("/api/lawquizzes/latest", async (req, res) => {
   try {
