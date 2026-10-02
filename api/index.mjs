@@ -253,7 +253,6 @@ async function fetchLawArticles(lawId) {
           visited.add(refNum);
 
           const refArt = articleMap.get(refNum);
-          console.log(`재귀 완료`);
           if (refArt && !refArt.isDeleted) {
             refMap.set(refNum, refArt);
             traverse(refArt, depth + 1);
@@ -277,6 +276,7 @@ async function fetchLawArticles(lawId) {
           refTexts.push(`[${refNum}]\n${refArt.content}`);
         }
         referencedContent = refTexts.join("\n\n");
+        console.log(`재귀 OK`);
       }
 
       resultArticles.push({
