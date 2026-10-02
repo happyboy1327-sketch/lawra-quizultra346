@@ -72,11 +72,52 @@ const VALID_LAW_IDS = [
 
 const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
 
-async function fetchLawArticles(lawId) {
+// 외부 법령 lawId 조회용 캐시
+const lawIdCache = new Map();
+
+async function getLawIdByName(lawName) {
+  if (lawIdCache.has(lawName)) return lawIdCache.get(lawName);
+
+  try {
+    const response = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
+      params: {
+        OC: OC_USER_ID,
+        target: "law",
+        type: "JSON",
+        query: lawName,
+      },
+    });
+
+    const lawList = response.data?.LawSearch?.law;
+    if (!lawList) return null;
+
+    const items = Array.isArray(lawList) ? lawList : [lawList];
+    const matched =
+      items.find(
+        (item) =>
+          String(item?.["법령명한글"] || "").replace(/\s+/g, "") ===
+          lawName.replace(/\s+/g, "")
+      ) || items[0];
+
+    const lawId = String(matched?.["법령일련번호"] || matched?.["법령ID"] || "");
+    if (lawId) {
+      lawIdCache.set(lawName, lawId);
+      return lawId;
+    }
+  } catch (err) {
+    console.error(`법령 검색 실패 (${lawName}):`, err.message);
+  }
+  return null;
+}
+
+// 기존 fetchLawArticles 함수 (타 법률 재귀 조회 포함)
+async function fetchLawArticles(lawId, depth = 0, maxDepth = 2) {
   if (!OC_USER_ID) {
     console.error("LAW_GOV_OC 환경 변수가 없음");
     return [];
   }
+
+  if (depth > maxDepth) return [];
 
   try {
     const response = await axios.get(LAW_API_URL, {
@@ -89,7 +130,6 @@ async function fetchLawArticles(lawId) {
     });
 
     const lawData = response.data;
-    // 조문단위 위치 예외 처리 (조문 객체 하위 또는 조문 자체)
     const joData =
       lawData?.["법령"]?.["조문"]?.["조문단위"] ||
       lawData?.["법령"]?.["조문"];
@@ -103,21 +143,16 @@ async function fetchLawArticles(lawId) {
     const lawName =
       lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
-    // ============================================================
-    // 헬퍼 함수: 조문 번호를 "제X조" 또는 "제X조의Y" 형태로 일관되게 규격화
-    // ============================================================
     function getCanonicalArticleNum(article) {
       const rawNum = String(article?.["조문번호"] || "").trim();
       const rawGaji = String(article?.["조문가지번호"] || "").trim();
       const joContent = String(article?.["조문내용"] || "").trim();
 
-      // 1. API 속성값(조문번호, 조문가지번호)으로 규격화
       if (rawNum && rawNum !== "0") {
         const gajiPart = rawGaji && rawGaji !== "0" && rawGaji !== "00" ? `의${rawGaji}` : "";
         return `제${rawNum}조${gajiPart}`;
       }
 
-      // 2. 조문내용 텍스트 시작부분에서 "제X조의Y" 추출
       const titleMatch = joContent.match(/^제\s*(\d+)\s*조(?:의\s*(\d+))?/);
       if (titleMatch) {
         return titleMatch[2] ? `제${titleMatch[1]}조의${titleMatch[2]}` : `제${titleMatch[1]}조`;
@@ -126,9 +161,6 @@ async function fetchLawArticles(lawId) {
       return "";
     }
 
-    // ============================================================
-    // 내부 함수 1: 조문 하나를 변환 (항/호/목 번호 및 내용 결합)
-    // ============================================================
     function parseArticle(article) {
       const num = getCanonicalArticleNum(article);
       const joContent = String(article?.["조문내용"] || "").trim();
@@ -140,7 +172,6 @@ async function fetchLawArticles(lawId) {
       const hangRaw = article?.["항"];
       const hoRaw = article?.["호"];
 
-      // 1. 항 -> 호 -> 목
       if (hangRaw) {
         const hangList = Array.isArray(hangRaw) ? hangRaw : [hangRaw];
 
@@ -196,9 +227,7 @@ async function fetchLawArticles(lawId) {
             lines.push(combinedHang);
           }
         });
-      }
-      // 2. 항 없이 조문 바로 밑에 호가 있는 경우
-      else if (hoRaw) {
+      } else if (hoRaw) {
         const hoList = Array.isArray(hoRaw) ? hoRaw : [hoRaw];
 
         hoList.forEach((ho) => {
@@ -227,28 +256,37 @@ async function fetchLawArticles(lawId) {
     }
 
     // ============================================================
-    // 내부 함수 2: 조문 내용에서 참조 조문("제10조", "제10조의2") 추출
+    // 내부 참조와 타 법률 참조를 분리해서 추출하는 함수
     // ============================================================
-    function extractReferencedArticleNumbers(content) {
-      if (!content) return [];
+    function extractReferences(content) {
+      if (!content) return { internal: [], external: [] };
 
-      const found = new Set();
-      const regex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
+      const externalList = [];
+      const extRegex = /「([^」]+)」\s*제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
       let match;
 
-      while ((match = regex.exec(content)) !== null) {
-        const articleNumber = match[2]
-          ? `제${match[1]}조의${match[2]}`
-          : `제${match[1]}조`;
-        found.add(articleNumber);
+      while ((match = extRegex.exec(content)) !== null) {
+        externalList.push({
+          lawName: match[1].trim(),
+          articleNum: match[3] ? `제${match[2]}조의${match[3]}` : `제${match[2]}조`,
+        });
       }
 
-      return [...found];
+      const cleanedContent = content.replace(extRegex, "");
+      const internalSet = new Set();
+      const intRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
+
+      while ((match = intRegex.exec(cleanedContent)) !== null) {
+        const articleNum = match[2] ? `제${match[1]}조의${match[2]}` : `제${match[1]}조`;
+        internalSet.add(articleNum);
+      }
+
+      return {
+        internal: [...internalSet],
+        external: externalList,
+      };
     }
 
-    // ============================================================
-    // 내부 함수 3: 전체 조문을 "제N조" 규격 키로 저장
-    // ============================================================
     const articleMap = new Map();
 
     articles.forEach((article) => {
@@ -258,37 +296,53 @@ async function fetchLawArticles(lawId) {
       }
     });
 
-    // ============================================================
-    // 내부 함수 4: 참조 조문 재귀 수집
-    // ============================================================
     const collected = new Map();
     const visited = new Set();
 
-    function collectArticle(article) {
+    
+    // 재귀 수집 함수 (인용 조항 개수에 따른 재귀 깊이 제어)
+    // ============================================================
+    async function collectArticle(article) {
       if (!article?.num || article.isDeleted) return;
 
-      if (visited.has(article.num)) return;
-      visited.add(article.num);
+      const key = `${article.lawName}_${article.num}`;
+      if (visited.has(key)) return;
+      visited.add(key);
 
-      collected.set(article.num, article);
+      collected.set(key, article);
 
-      const referencedNumbers = extractReferencedArticleNumbers(article.content);
+      const { internal, external } = extractReferences(article.content);
+      const totalRefCount = internal.length + external.length;
 
-      referencedNumbers.forEach((referencedNum) => {
-        const referencedArticle = articleMap.get(referencedNum);
+      // 인용 조항이 1개면 1회만 재귀조회(depth + 1), 2개 이상이면 기존 maxDepth 적용
+      const effectiveMaxDepth = totalRefCount === 1 ? depth + 1 : maxDepth;
 
-        if (referencedArticle && !visited.has(referencedNum)) {
-          console.log(`[재귀 성공] ${article.num} -> ${referencedNum}`);
-          collectArticle(referencedArticle);
+      if (depth >= effectiveMaxDepth) return;
+
+      // 1. 내부 참조 조문 수집
+      for (const refNum of internal) {
+        const refArticle = articleMap.get(refNum);
+        if (refArticle) {
+          await collectArticle(refArticle);
         }
-      });
-    }
+      }
 
-    // ============================================================
-    // 내부 함수 5: 전체 조문 탐색 시작
-    // ============================================================
+      // 2. 외부 타 법률 참조 조문 수집
+      for (const ext of external) {
+        const extLawId = await getLawIdByName(ext.lawName);
+        if (extLawId && extLawId !== lawId) {
+          const extArticles = await fetchLawArticles(extLawId, depth + 1, effectiveMaxDepth);
+          extArticles.forEach((extArt) => {
+            if (extArt.num === ext.articleNum) {
+              const extKey = `${extArt.lawName}_${extArt.num}`;
+              collected.set(extKey, extArt);
+            }
+          });
+        }
+      }
+    }
     for (const parsed of articleMap.values()) {
-      collectArticle(parsed);
+      await collectArticle(parsed);
     }
 
     return [...collected.values()];
