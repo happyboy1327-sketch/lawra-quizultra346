@@ -89,7 +89,6 @@ async function fetchLawArticles(lawId) {
     });
 
     const lawData = response.data;
-    // 조문단위 위치 예외 처리 (조문 객체 하위 또는 조문 자체)
     const joData =
       lawData?.["법령"]?.["조문"]?.["조문단위"] ||
       lawData?.["법령"]?.["조문"];
@@ -103,21 +102,16 @@ async function fetchLawArticles(lawId) {
     const lawName =
       lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
-    // ============================================================
-    // 헬퍼 함수: 조문 번호를 "제X조" 또는 "제X조의Y" 형태로 일관되게 규격화
-    // ============================================================
     function getCanonicalArticleNum(article) {
       const rawNum = String(article?.["조문번호"] || "").trim();
       const rawGaji = String(article?.["조문가지번호"] || "").trim();
       const joContent = String(article?.["조문내용"] || "").trim();
 
-      // 1. API 속성값(조문번호, 조문가지번호)으로 규격화
       if (rawNum && rawNum !== "0") {
         const gajiPart = rawGaji && rawGaji !== "0" && rawGaji !== "00" ? `의${rawGaji}` : "";
         return `제${rawNum}조${gajiPart}`;
       }
 
-      // 2. 조문내용 텍스트 시작부분에서 "제X조의Y" 추출
       const titleMatch = joContent.match(/^제\s*(\d+)\s*조(?:의\s*(\d+))?/);
       if (titleMatch) {
         return titleMatch[2] ? `제${titleMatch[1]}조의${titleMatch[2]}` : `제${titleMatch[1]}조`;
@@ -126,9 +120,6 @@ async function fetchLawArticles(lawId) {
       return "";
     }
 
-    // ============================================================
-    // 내부 함수 1: 조문 하나를 변환 (항/호/목 번호 및 내용 결합)
-    // ============================================================
     function parseArticle(article) {
       const num = getCanonicalArticleNum(article);
       const joContent = String(article?.["조문내용"] || "").trim();
@@ -140,7 +131,6 @@ async function fetchLawArticles(lawId) {
       const hangRaw = article?.["항"];
       const hoRaw = article?.["호"];
 
-      // 1. 항 -> 호 -> 목
       if (hangRaw) {
         const hangList = Array.isArray(hangRaw) ? hangRaw : [hangRaw];
 
@@ -196,9 +186,7 @@ async function fetchLawArticles(lawId) {
             lines.push(combinedHang);
           }
         });
-      }
-      // 2. 항 없이 조문 바로 밑에 호가 있는 경우
-      else if (hoRaw) {
+      } else if (hoRaw) {
         const hoList = Array.isArray(hoRaw) ? hoRaw : [hoRaw];
 
         hoList.forEach((ho) => {
@@ -226,9 +214,6 @@ async function fetchLawArticles(lawId) {
       };
     }
 
-    // ============================================================
-    // 내부 함수 2: 조문 내용에서 참조 조문("제10조", "제10조의2") 추출
-    // ============================================================
     function extractReferencedArticleNumbers(content) {
       if (!content) return [];
 
@@ -246,58 +231,67 @@ async function fetchLawArticles(lawId) {
       return [...found];
     }
 
-    // ============================================================
-    // 내부 함수 3: 전체 조문을 "제N조" 규격 키로 저장
-    // ============================================================
     const articleMap = new Map();
 
     articles.forEach((article) => {
       const parsed = parseArticle(article);
-      if (parsed.num) {
+      if (parsed.num && !parsed.isDeleted) {
         articleMap.set(parsed.num, parsed);
       }
     });
 
-    // ============================================================
-    // 내부 함수 4: 참조 조문 재귀 수집
-    // ============================================================
-    const collected = new Map();
-    const visited = new Set();
+    // 특정 조문 기준으로 인용 조문 트리 재귀 수집 함수 (최대 깊이 2단계)
+    function collectReferencedArticles(startArticle, maxDepth = 2) {
+      const refMap = new Map();
+      const visited = new Set([startArticle.num]);
 
-    function collectArticle(article) {
-      if (!article?.num || article.isDeleted) return;
+      function traverse(currArticle, depth) {
+        if (depth > maxDepth) return;
+        const refNums = extractReferencedArticleNumbers(currArticle.content);
 
-      if (visited.has(article.num)) return;
-      visited.add(article.num);
+        for (const refNum of refNums) {
+          if (visited.has(refNum)) continue;
+          visited.add(refNum);
 
-      collected.set(article.num, article);
-
-      const referencedNumbers = extractReferencedArticleNumbers(article.content);
-
-      referencedNumbers.forEach((referencedNum) => {
-        const referencedArticle = articleMap.get(referencedNum);
-
-        if (referencedArticle && !visited.has(referencedNum)) {
-          console.log(`[재귀 성공] ${article.num} -> ${referencedNum}`);
-          collectArticle(referencedArticle);
+          const refArt = articleMap.get(refNum);
+          if (refArt && !refArt.isDeleted) {
+            refMap.set(refNum, refArt);
+            traverse(refArt, depth + 1);
+          }
         }
+      }
+
+      traverse(startArticle, 1);
+      return refMap;
+    }
+
+    const resultArticles = [];
+
+    for (const parsed of articleMap.values()) {
+      const refMap = collectReferencedArticles(parsed);
+      let referencedContent = "";
+
+      if (refMap.size > 0) {
+        const refTexts = [];
+        for (const [refNum, refArt] of refMap.entries()) {
+          refTexts.push(`[${refNum}]\n${refArt.content}`);
+        }
+        referencedContent = refTexts.join("\n\n");
+      }
+
+      resultArticles.push({
+        ...parsed,
+        referencedContent,
       });
     }
 
-    // ============================================================
-    // 내부 함수 5: 전체 조문 탐색 시작
-    // ============================================================
-    for (const parsed of articleMap.values()) {
-      collectArticle(parsed);
-    }
-
-    return [...collected.values()];
+    return resultArticles;
   } catch (err) {
     console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
   }
 }
- 
+
 async function fetchRandomArticle(law) {
   const articles = await fetchLawArticles(law.lawId);
 
@@ -351,7 +345,6 @@ function normalizeText(value) {
   }
 
   if (typeof value === "object") {
-    // 모델이 { text: "..." }, { content: "..." } 형태로 반환하는 경우
     const preferredKeys = ["text", "content", "explanation", "reason", "detail"];
 
     for (const key of preferredKeys) {
@@ -361,7 +354,6 @@ function normalizeText(value) {
       }
     }
 
-    // 위 필드가 없으면 객체 전체를 안전한 JSON 문자열로 변환
     return JSON.stringify(value);
   }
 
@@ -373,7 +365,6 @@ function normalizeQuiz(quiz) {
     return null;
   }
 
-  // explanation 정규화
   let normalizedExplanation;
 
   if (
@@ -387,7 +378,6 @@ function normalizeQuiz(quiz) {
       ""
     );
 
-    // Boolean / boolean / 문자열 "true", "false" 모두 처리
     const rawBoolean =
       quiz.explanation.Boolean ??
       quiz.explanation.boolean ??
@@ -407,7 +397,6 @@ function normalizeQuiz(quiz) {
       Boolean: explanationBoolean,
     };
   } else {
-    // 기존 문자열 explanation도 호환
     normalizedExplanation = {
       string: normalizeText(quiz.explanation),
       Boolean: true,
@@ -437,7 +426,6 @@ function normalizeQuiz(quiz) {
       : [],
   };
 
-  // explanation은 객체이므로 string을 검사
   if (
     !normalized.question ||
     !normalized.explanation.string ||
@@ -469,13 +457,17 @@ async function generateQuiz(article, retriesLeft = 2) {
     .replace(/\s+/g, " ")
     .trim();
 
+  const refContent = String(article.referencedContent || "").trim();
+
   const prompt = `
-다음 한국 법령 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요. 영어는 절대로 단 한글자도 포함하면 안됩니다.
+다음 한국 법령 조문 및 참조/인용 조문을 읽고 객관식 4지선다 퀴즈 1개를 만드세요. 영어는 절대로 단 한글자도 포함하면 안됩니다.
 
 법령명: ${article.lawName}
-조문번호: 제${article.num}조
-조문 및 항 내용: ${content}
+조문번호: ${article.num}
+[출제 조문 내용]
+${content}
 
+${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 위 조문의 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 하나라도 만족하지 않을시 재생성하시오.
 □ 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적 법률 사례 문제를 만드세요.
 □ 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 자세히 작성하시오.
@@ -544,16 +536,15 @@ async function generateQuiz(article, retriesLeft = 2) {
       .replace(/\s*```\s*$/i, "")
       .trim();
 
-
     const quiz = JSON.parse(responseText);
-const normalizedQuiz = normalizeQuiz(quiz);
+    const normalizedQuiz = normalizeQuiz(quiz);
 
-if (!normalizedQuiz) {
-  console.error("유효하지 않은 퀴즈 응답:", quiz);
-  return null;
-}
+    if (!normalizedQuiz) {
+      console.error("유효하지 않은 퀴즈 응답:", quiz);
+      return null;
+    }
 
-return normalizedQuiz;
+    return normalizedQuiz;
   } catch (err) {
     if (isRateLimitError(err) && retriesLeft > 0) {
       await sleep(1500);
@@ -568,13 +559,7 @@ async function validateSingleQuiz(quiz, article) {
   const sourceText = String(article?.content || "")
     .replace(/[ \t]+/g, " ")
     .trim();
-
-  console.log("[검증 및 자동수정 시작]", {
-    lawName: article?.lawName,
-    articleNumber: article?.num,
-    sourceLength: sourceText.length,
-    sourcePreview: sourceText.slice(0, 320),
-  });
+  const refText = String(article?.referencedContent || "").trim();
 
   if (!sourceText) {
     return {
@@ -584,22 +569,34 @@ async function validateSingleQuiz(quiz, article) {
     };
   }
 
+  const fullSourceContext = refText 
+    ? `[출제 조문 (${article?.num})]\n${sourceText}\n\n[참조/인용 조문]\n${refText}`
+    : `[출제 조문 (${article?.num})]\n${sourceText}`;
+
+  console.log("[검증 및 자동수정 시작]", {
+    lawName: article?.lawName,
+    articleNumber: article?.num,
+    sourceLength: sourceText.length,
+    hasReferencedContent: !!refText,
+    sourcePreview: sourceText.slice(0, 320),
+  });
+
   const validationPayload = {
     source: {
       lawName: String(article?.lawName || ""),
       articleNumber: String(article?.num || ""),
-      content: sourceText,
+      content: fullSourceContext,
     },
     quiz,
   };
 
   const userPrompt = `
 당신은 사실성과 법리성을 우선으로 하는 대한민국 법률 퀴즈 검증 및 교정관입니다. 
-제시된 퀴즈가 아래 [원문 조문]과 일치하는지 검증하고, 원문과 불합치하거나 질문-정답-해설 내 전체 텍스트 간 모순이 있을 경우 원문 조문 스니펫을 완벽히 반영하여 자동 수정(Snippet Auto-Fix)하십시오.
+제시된 퀴즈가 아래 [원문 조문 및 참조/인용 조문]과 일치하는지 검증하고, 원문과 불합치하거나 질문-정답-해설 내 전체 텍스트 간 모순이 있을 경우 원문 조문 스니펫을 완벽히 반영하여 자동 수정(Snippet Auto-Fix)하십시오.
 
 [검증 및 교정 기준]
 0. 걍 모르겠거나 조금이라도 애매하거나 검증 불가하면 false 처리하시오.
-1. 질문·보기·해설의 법적 수치, 시점, 주체, 법리 해석이 [원문 조문]과 100% 일치해야 합니다.
+1. 질문·보기·해설의 법적 수치, 시점, 주체, 법리 해석이 [원문 조문 및 참조/인용 조문]과 100% 일치해야 합니다.
 2. 상관관계와 인과관계, 선후관계가 올바르지 않으며, 유사 법률, 대립되는 법률을 혼동했다면 false 처리하시오.
 (e.g. 직권 남용 vs. 직권 초과)
 3. 질문에서 의도한 기간 조건이 정답에서 제대로 계산되었는지 실제 법령과 비교하며 검사하시오. 시효 기간을 실제 법령과 다르게 잘못 서술한 경우 false 처리하시오.
@@ -612,7 +609,7 @@ async function validateSingleQuiz(quiz, article) {
 8. 질문이 묻는 본질(예: 소멸시효 기간), 정답 보기의 내용, 해설 내 법령 인용 및 수치/시점이 서로 완벽히 부합하는지 확인하시오.
 9. 해설 내에 예시를 잘못 들었으면 false 처리하시오.
 10. 질문에 맞는 정답과 해설의 첫 두 문장 간 내용이 불합치하거나 핀트가 어긋나면 valid: false 처리하십시오.
-11. valid: false인 경우, 오직 [원문 조문] 텍스트 스니펫에 근거하여 질문, 4지선다 보기(정답 1개 필수), 정답(answer), 해설(explanation)을 즉시 교정한 repairedQuiz 객체를 반드시 생성하십시오.
+11. valid: false인 경우, 오직 [원문 조문 및 참조/인용 조문] 텍스트 스니펫에 근거하여 질문, 4지선다 보기(정답 1개 필수), 정답(answer), 해설(explanation)을 즉시 교정한 repairedQuiz 객체를 반드시 생성하십시오.
 12. valid: true인 경우 repairedQuiz는 null로 설정하십시오.
 
 ### OUTPUT FORMAT (JSON ONLY)
@@ -701,27 +698,24 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
     const validation = await validateSingleQuiz(quiz, article);
 
     if (validation?.valid === true) {
-  console.log(
-    `[슬롯 ${slotIndex}] 1차 문제 생성 및 검증 성공 (시도 ${attempt})`
-  );
+      console.log(
+        `[슬롯 ${slotIndex}] 1차 문제 생성 및 검증 성공 (시도 ${attempt})`
+      );
 
-  // 강제 추가 검증
-  const revalidation = await validateSingleQuiz(quiz, article);
+      const revalidation = await validateSingleQuiz(quiz, article);
 
-  if (revalidation?.valid === true) {
-    console.log(
-      `[슬롯 ${slotIndex}] 2차 강제 검증까지 성공 (시도 ${attempt})`
-    );
-    return quiz;
-  }
+      if (revalidation?.valid === true) {
+        console.log(
+          `[슬롯 ${slotIndex}] 2차 강제 검증까지 성공 (시도 ${attempt})`
+        );
+        return quiz;
+      }
 
-  console.log(
-    `[슬롯 ${slotIndex}] 2차 강제 검증 실패 → 재시도`
-  );
-}
+      console.log(
+        `[슬롯 ${slotIndex}] 2차 강제 검증 실패 → 재시도`
+      );
+    }
 
-
-// 2. 검증 탈락 시 스니펫 기반 자동 수정본(repairedQuiz) 채택 및 디버깅 데이터 바인딩
     if (validation?.repairedQuiz) {
       console.log(`\n================ [슬롯 ${slotIndex} 자동 수정 내역 디버깅] ================`);
       console.log(`- 사유: ${validation?.reason}`);
@@ -785,7 +779,6 @@ app.post("/api/lawquizzes/new", async (req, res) => {
   try {
     console.log("=== 병렬 퀴즈 세트 생성 시작 ===");
 
-    // 5개의 퀴즈를 동시에 병렬로 생성
     const quizPromises = [1, 2, 3, 4, 5].map((index) => generateValidQuizSlot(index));
     const results = await Promise.all(quizPromises);
 
