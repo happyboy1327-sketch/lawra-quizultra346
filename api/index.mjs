@@ -641,6 +641,15 @@ const QuizService = {
         const secondValidation = await this.validateSingleQuiz(validation.repairedQuiz, article);
         const finalRepairedQuiz = secondValidation?.repairedQuiz || validation.repairedQuiz;
         const finalReason = secondValidation?.repairedQuiz ? secondValidation.reason : validation.reason;
+        console.log(`\n================ [슬롯 ${slotIndex} 자동 수정 내역 디버깅] ================`);
+        console.log(`- 사유: ${validation?.reason}`);
+        console.log(`- 수정 전 질문: ${quiz.question}`);
+        console.log(`- 수정 후 질문: ${validation.repairedQuiz.question}`);
+        console.log(`- 수정 전 해설은 ${quiz.explanation?.string}`);
+        console.log(`- 수정 후 해설은 ${validation.repairedQuiz.explanation?.string}`);
+        console.log(`- 수정 전 정답: ${quiz.answer}`);
+        console.log(`- 수정 후 정답: ${validation.repairedQuiz.answer}`);
+        console.log(`========================================================================\n`);
         console.log(`[슬롯 ${slotIndex}] false문제 최종 재생성/검증 성공`);
 
         return {
