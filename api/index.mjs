@@ -276,7 +276,6 @@ async function fetchLawArticles(lawId) {
           refTexts.push(`[${refNum}]\n${refArt.content}`);
         }
         referencedContent = refTexts.join("\n\n");
-        console.log(`재귀 OK`);
       }
 
       resultArticles.push({
