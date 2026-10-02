@@ -124,6 +124,91 @@ const Utils = {
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
+
+// 1. 외부 법령 ID 및 조문 데이터 캐시
+const lawIdCache = new Map();
+const lawArticlesCache = new Map(); // lawId -> Map<articleNum, article>
+
+async function getLawIdByName(lawName) {
+  if (lawIdCache.has(lawName)) return lawIdCache.get(lawName);
+
+  try {
+    const response = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
+      params: { OC: OC_USER_ID, target: "law", type: "JSON", query: lawName },
+    });
+
+    const lawList = response.data?.LawSearch?.law;
+    if (!lawList) return null;
+
+    const items = Array.isArray(lawList) ? lawList : [lawList];
+    const matched =
+      items.find(
+        (item) =>
+          String(item?.["법령명한글"] || "").replace(/\s+/g, "") ===
+          lawName.replace(/\s+/g, "")
+      ) || items[0];
+
+    const lawId = String(matched?.["법령일련번호"] || matched?.["법령ID"] || "");
+    if (lawId) {
+      lawIdCache.set(lawName, lawId);
+      return lawId;
+    }
+  } catch (err) {
+    console.error(`법령 검색 실패 (${lawName}):`, err.message);
+  }
+  return null;
+}
+
+// 2. 법령 ID별 원본 조문 Map 가져오기 (1회만 API 호출 후 메모리 캐싱)
+async function getLawArticleMap(lawId) {
+  if (lawArticlesCache.has(lawId)) return lawArticlesCache.get(lawId);
+
+  try {
+    const { data } = await axios.get(LAW_API_URL, {
+      params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
+    });
+
+    const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
+    if (!joData) return new Map();
+
+    const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
+    const articleMap = new Map();
+
+    (Array.isArray(joData) ? joData : [joData]).forEach((art) => {
+      const parsed = LawParser.parseArticle(art, lawName);
+      if (parsed.num && !parsed.isDeleted) articleMap.set(parsed.num, parsed);
+    });
+
+    lawArticlesCache.set(lawId, articleMap);
+    return articleMap;
+  } catch (err) {
+    console.error(`법령 Map 로드 실패 (ID: ${lawId}):`, err.message);
+    return new Map();
+  }
+}
+
+// 3. 참조 추출 (외부 참조 문구를 먼저 떼어낸 뒤 순수 내부 참조만 추출)
+function extractReferences(content) {
+  if (!content) return { internal: [], external: [] };
+
+  const external = [];
+  // 외부 참조 (예: "형법 제257조") 추출 및 해당 문자열 제거
+  const cleanContent = content.replace(
+    /([가-힣]+법)\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
+    (match, lawName, articleNum) => {
+      external.push({ lawName, articleNum: articleNum.replace(/\s+/g, "") });
+      return "";
+    }
+  );
+
+  // 남은 텍스트에서 순수 내부 참조 (예: "제15조") 추출
+  const internalMatches = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)];
+  const internal = internalMatches.map((m) => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
+
+  return { internal, external };
+}
+
+// 4. LawParser (기존 로직 유지)
 const LawParser = {
   getCanonicalArticleNum(article, joContent) {
     const rawNum = String(article?.["조문번호"] || "").trim();
@@ -281,53 +366,66 @@ const LawParser = {
   }
 };
 
+// 5. LawService (캐시 기반 안전 수집 및 referencedContent 결합)
 const LawService = {
   async fetchLawArticles(lawId) {
     if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
 
     try {
-      const { data } = await axios.get(LAW_API_URL, {
-        params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
-      });
+      const articleMap = await getLawArticleMap(lawId);
+      if (!articleMap.size) return [];
 
-      const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
-      if (!joData) return [];
+      const articlesWithRefs = await Promise.all(
+        Array.from(articleMap.values()).map(async (parsed) => {
+          const visited = new Set();
+          const collected = new Map();
 
-      const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
-      const articleMap = new Map();
+          const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 2) => {
+            if (!articleNum) return;
 
-      (Array.isArray(joData) ? joData : [joData]).forEach(art => {
-        const parsed = LawParser.parseArticle(art, lawName);
-        if (parsed.num && !parsed.isDeleted) articleMap.set(parsed.num, parsed);
-      });
+            const key = `${currentLawId}_${articleNum}`;
+            if (visited.has(key)) return;
+            visited.add(key);
 
-      // 참조 조문 수집
-      return Array.from(articleMap.values()).map(parsed => {
-        const visited = new Set([parsed.num]);
-        const refMap = new Map();
+            // 미리 캐싱된 법령 Map에서 안전하게 꺼냄
+            const currentMap = await getLawArticleMap(currentLawId);
+            const article = currentMap.get(articleNum);
 
-        const traverse = (currArticle, depth) => {
-          if (depth > 2) return;
-          const refNums = [...currArticle.content.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)]
-            .map(m => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
+            if (!article || article.isDeleted) return;
+            collected.set(key, article);
 
-          refNums.forEach(refNum => {
-            if (!visited.has(refNum) && articleMap.has(refNum)) {
-              visited.add(refNum);
-              const refArt = articleMap.get(refNum);
-              refMap.set(refNum, refArt);
-              traverse(refArt, depth + 1);
+            const { internal, external } = extractReferences(article.content);
+            const totalRefCount = internal.length + external.length;
+            const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
+            if (currentDepth >= effectiveMaxDepth) return;
+
+            // 내부 참조
+            for (const refNum of internal) {
+              await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
             }
-          });
-        };
 
-        traverse(parsed, 1);
-        const referencedContent = Array.from(refMap.entries())
-          .map(([refNum, refArt]) => `[${refNum}]\n${refArt.content}`)
-          .join("\n\n");
+            // 외부 참조
+            for (const ext of external) {
+              const targetLawId = await getLawIdByName(ext.lawName);
+              if (targetLawId && targetLawId !== lawId) {
+                await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
+              }
+            }
+          };
 
-        return { ...parsed, referencedContent };
-      });
+          await collectArticle(lawId, parsed.num);
+
+          const selfKey = `${lawId}_${parsed.num}`;
+          const referencedContent = Array.from(collected.entries())
+            .filter(([k]) => k !== selfKey)
+            .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
+            .join("\n\n");
+
+          return { ...parsed, referencedContent };
+        })
+      );
+
+      return articlesWithRefs;
     } catch (err) {
       console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
       return [];
