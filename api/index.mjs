@@ -240,7 +240,6 @@ async function fetchLawArticles(lawId) {
       }
     });
 
-    // 특정 조문 기준으로 인용 조문 트리 재귀 수집 함수 (최대 깊이 2단계)
     function collectReferencedArticles(startArticle, maxDepth = 2) {
       const refMap = new Map();
       const visited = new Set([startArticle.num]);
@@ -254,6 +253,7 @@ async function fetchLawArticles(lawId) {
           visited.add(refNum);
 
           const refArt = articleMap.get(refNum);
+          console.log(`재귀 완료`);
           if (refArt && !refArt.isDeleted) {
             refMap.set(refNum, refArt);
             traverse(refArt, depth + 1);
@@ -779,12 +779,13 @@ app.post("/api/lawquizzes/new", async (req, res) => {
   try {
     console.log("=== 병렬 퀴즈 세트 생성 시작 ===");
 
-    const quizPromises = [1, 2, 3, 4, 5].map((index) => generateValidQuizSlot(index));
+    // 3개의 퀴즈를 동시에 병렬로 생성
+    const quizPromises = [1, 2, 3].map((index) => generateValidQuizSlot(index));
     const results = await Promise.all(quizPromises);
 
     const newQuizzes = results.filter(Boolean);
 
-    console.log(`=== 퀴즈 세트 생성 완료: ${newQuizzes.length}/5 ===`);
+    console.log(`=== 퀴즈 세트 생성 완료: ${newQuizzes.length}/3 ===`);
 
     if (newQuizzes.length === 0) {
       return res.status(400).json({
