@@ -454,7 +454,7 @@ function normalizeQuiz(quiz) {
   if (
     !normalized.question ||
     !normalized.explanation.string ||
-    normalized.explanation.Boolean !=== true ||
+    normalized.explanation.Boolean !== true ||
     normalized.options.length !== 4
   ) {
     return null;
@@ -732,6 +732,8 @@ async function generateValidQuizSlot(slotIndex, maxTries = 3) {
       console.log(`- 사유: ${validation?.reason}`);
       console.log(`- 수정 전 질문: ${quiz.question}`);
       console.log(`- 수정 후 질문: ${validation.repairedQuiz.question}`);
+      console.log(`- 수정 전 해설은 ${quiz.explanation?.string}`);
+      console.log(`- 수정 후 해설은 ${validation.repairedQuiz.explanation?.string}`);
       console.log(`- 수정 전 정답: ${quiz.answer}`);
       console.log(`- 수정 후 정답: ${validation.repairedQuiz.answer}`);
       console.log(`========================================================================\n`);
