@@ -89,7 +89,10 @@ async function fetchLawArticles(lawId) {
     });
 
     const lawData = response.data;
-    const joData = lawData?.["법령"]?.["조문"]?.["조문단위"];
+    // 조문단위 위치 예외 처리 (조문 객체 하위 또는 조문 자체)
+    const joData =
+      lawData?.["법령"]?.["조문"]?.["조문단위"] ||
+      lawData?.["법령"]?.["조문"];
 
     if (!joData) {
       console.error("법령 조문 데이터 없음");
@@ -101,10 +104,33 @@ async function fetchLawArticles(lawId) {
       lawData?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
 
     // ============================================================
-    // 내부 함수 1: 조문 하나를 기존 형식으로 변환
+    // 헬퍼 함수: 조문 번호를 "제X조" 또는 "제X조의Y" 형태로 일관되게 규격화
+    // ============================================================
+    function getCanonicalArticleNum(article) {
+      const rawNum = String(article?.["조문번호"] || "").trim();
+      const rawGaji = String(article?.["조문가지번호"] || "").trim();
+      const joContent = String(article?.["조문내용"] || "").trim();
+
+      // 1. API 속성값(조문번호, 조문가지번호)으로 규격화
+      if (rawNum && rawNum !== "0") {
+        const gajiPart = rawGaji && rawGaji !== "0" && rawGaji !== "00" ? `의${rawGaji}` : "";
+        return `제${rawNum}조${gajiPart}`;
+      }
+
+      // 2. 조문내용 텍스트 시작부분에서 "제X조의Y" 추출
+      const titleMatch = joContent.match(/^제\s*(\d+)\s*조(?:의\s*(\d+))?/);
+      if (titleMatch) {
+        return titleMatch[2] ? `제${titleMatch[1]}조의${titleMatch[2]}` : `제${titleMatch[1]}조`;
+      }
+
+      return "";
+    }
+
+    // ============================================================
+    // 내부 함수 1: 조문 하나를 변환 (항/호/목 번호 및 내용 결합)
     // ============================================================
     function parseArticle(article) {
-      const num = String(article?.["조문번호"] || "").trim();
+      const num = getCanonicalArticleNum(article);
       const joContent = String(article?.["조문내용"] || "").trim();
 
       const lines = [];
@@ -116,47 +142,47 @@ async function fetchLawArticles(lawId) {
 
       // 1. 항 -> 호 -> 목
       if (hangRaw) {
-        const hangList = Array.isArray(hangRaw)
-          ? hangRaw
-          : [hangRaw];
+        const hangList = Array.isArray(hangRaw) ? hangRaw : [hangRaw];
 
         hangList.forEach((h) => {
           const hLines = [];
+          const hNo = String(h?.["항번호"] || "").trim();
+          let hContent = String(h?.["항내용"] || "").trim();
 
-          const hangContent =
-            String(h?.["항내용"] || "").trim();
-
-          if (hangContent) {
-            hLines.push(hangContent);
+          if (hContent) {
+            if (hNo && !hContent.startsWith(hNo)) {
+              hContent = `${hNo} ${hContent}`;
+            }
+            hLines.push(hContent);
           }
 
           const innerHo = h?.["호"];
-
           if (innerHo) {
-            const hoList = Array.isArray(innerHo)
-              ? innerHo
-              : [innerHo];
+            const hoList = Array.isArray(innerHo) ? innerHo : [innerHo];
 
             hoList.forEach((ho) => {
-              const hoContent =
-                String(ho?.["호내용"] || "").trim();
+              const hoNo = String(ho?.["호번호"] || "").trim();
+              let hoContent = String(ho?.["호내용"] || "").trim();
 
               if (hoContent) {
+                if (hoNo && !hoContent.startsWith(hoNo)) {
+                  hoContent = `${hoNo} ${hoContent}`;
+                }
                 hLines.push(`  ${hoContent}`);
               }
 
               const innerMok = ho?.["목"];
-
               if (innerMok) {
-                const mokList = Array.isArray(innerMok)
-                  ? innerMok
-                  : [innerMok];
+                const mokList = Array.isArray(innerMok) ? innerMok : [innerMok];
 
                 mokList.forEach((m) => {
-                  const mokContent =
-                    String(m?.["목내용"] || "").trim();
+                  const mNo = String(m?.["목번호"] || "").trim();
+                  let mokContent = String(m?.["목내용"] || "").trim();
 
                   if (mokContent) {
+                    if (mNo && !mokContent.startsWith(mNo)) {
+                      mokContent = `${mNo} ${mokContent}`;
+                    }
                     hLines.push(`    ${mokContent}`);
                   }
                 });
@@ -166,24 +192,23 @@ async function fetchLawArticles(lawId) {
 
           if (hLines.length > 0) {
             const combinedHang = hLines.join("\n");
-
             hangTexts.push(combinedHang);
             lines.push(combinedHang);
           }
         });
       }
-
       // 2. 항 없이 조문 바로 밑에 호가 있는 경우
       else if (hoRaw) {
-        const hoList = Array.isArray(hoRaw)
-          ? hoRaw
-          : [hoRaw];
+        const hoList = Array.isArray(hoRaw) ? hoRaw : [hoRaw];
 
         hoList.forEach((ho) => {
-          const hoContent =
-            String(ho?.["호내용"] || "").trim();
+          const hoNo = String(ho?.["호번호"] || "").trim();
+          let hoContent = String(ho?.["호내용"] || "").trim();
 
           if (hoContent) {
+            if (hoNo && !hoContent.startsWith(hoNo)) {
+              hoContent = `${hoNo} ${hoContent}`;
+            }
             hangTexts.push(hoContent);
             lines.push(`  ${hoContent}`);
           }
@@ -197,37 +222,24 @@ async function fetchLawArticles(lawId) {
         content: fullContent,
         hang: hangTexts,
         lawName,
+        isDeleted: joContent.includes("삭제") && fullContent.length < 30,
       };
     }
 
     // ============================================================
-    // 내부 함수 2: 조문 내용에서 "제○조" 형태 추출
+    // 내부 함수 2: 조문 내용에서 참조 조문("제10조", "제10조의2") 추출
     // ============================================================
     function extractReferencedArticleNumbers(content) {
       if (!content) return [];
 
       const found = new Set();
-
-      /*
-       * 찾는 형태:
-       *
-       * 제10조
-       * 제10조의2
-       * 제10조의 2
-       * 제10조제2항
-       * 제10조의2제3항
-       *
-       * 최종적으로는 "제10조", "제10조의2"만 반환
-       */
       const regex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
-
       let match;
 
       while ((match = regex.exec(content)) !== null) {
         const articleNumber = match[2]
           ? `제${match[1]}조의${match[2]}`
           : `제${match[1]}조`;
-
         found.add(articleNumber);
       }
 
@@ -235,81 +247,56 @@ async function fetchLawArticles(lawId) {
     }
 
     // ============================================================
-    // 내부 함수 3: 전체 조문을 "조문번호 -> 조문" 형태로 저장
+    // 내부 함수 3: 전체 조문을 "제N조" 규격 키로 저장
     // ============================================================
     const articleMap = new Map();
 
     articles.forEach((article) => {
       const parsed = parseArticle(article);
-
       if (parsed.num) {
         articleMap.set(parsed.num, parsed);
       }
     });
 
     // ============================================================
-    // 내부 함수 4: 특정 조문이 참조하는 조문을 재귀적으로 찾기
+    // 내부 함수 4: 참조 조문 재귀 수집
     // ============================================================
     const collected = new Map();
     const visited = new Set();
 
     function collectArticle(article) {
-      if (!article?.num) return;
+      if (!article?.num || article.isDeleted) return;
 
-      // 이미 처리한 조문이면 다시 들어가지 않음
       if (visited.has(article.num)) return;
-
       visited.add(article.num);
 
-      // 기존 코드와 동일하게 37자 미만은 결과에서 제외
-      if (article.content.length >= 37) {
-        collected.set(article.num, article);
-      }
+      collected.set(article.num, article);
 
-      // 현재 조문의 전체 내용에서 다른 조문 찾기
-      const referencedNumbers =
-        extractReferencedArticleNumbers(article.content);
+      const referencedNumbers = extractReferencedArticleNumbers(article.content);
 
       referencedNumbers.forEach((referencedNum) => {
-        const referencedArticle =
-          articleMap.get(referencedNum);
+        const referencedArticle = articleMap.get(referencedNum);
 
-        // 현재 법령에 실제 존재하는 조문일 때만 추가
-        if (
-          referencedArticle &&
-          !visited.has(referencedNum)
-        ) {
+        if (referencedArticle && !visited.has(referencedNum)) {
+          console.log(`[재귀 성공] ${article.num} -> ${referencedNum}`);
           collectArticle(referencedArticle);
-          console.log('재귀 OK');
         }
       });
     }
 
     // ============================================================
-    // 내부 함수 5: 최초 조문들을 기존 방식대로 처리
+    // 내부 함수 5: 전체 조문 탐색 시작
     // ============================================================
-    articles.forEach((article) => {
-      const parsed = parseArticle(article);
-
-      if (
-        parsed.num &&
-        parsed.content.length >= 37
-      ) {
-        collectArticle(parsed);
-      }
-    });
+    for (const parsed of articleMap.values()) {
+      collectArticle(parsed);
+    }
 
     return [...collected.values()];
   } catch (err) {
-    console.error(
-      `법령 API 오류 (ID: ${lawId}):`,
-      err.message
-    );
-
+    console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
     return [];
   }
 }
-
  
 async function fetchRandomArticle(law) {
   const articles = await fetchLawArticles(law.lawId);
