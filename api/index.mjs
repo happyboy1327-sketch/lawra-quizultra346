@@ -55,7 +55,7 @@ try {
 
 app.use((req, res, next) => {
   if (!db) {
-    return res.status(500).json({ error: "DB 연결 실패", message: initializationError });
+    return res.status(500).json({ error: "DB 연결 실패", message: initializationError, serverError: true });
   }
   next();
 });
@@ -111,26 +111,18 @@ const Utils = {
       })),
     };
 
-    const isValid = normalized.question && 
-                    normalized.explanation.string && 
-                    normalized.explanation.Boolean === true && 
-                    normalized.options.length === 4 &&
-                    normalized.options.filter(o => o.is_correct).length === 1;
-
     normalized.explanation.string = normalized.explanation.string
-  .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
+      .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
 
-    return isValid ? normalized : null;
+    return normalized;
   }
 };
 
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
-
-// 1. 외부 법령 ID 및 조문 데이터 캐시
 const lawIdCache = new Map();
-const lawArticlesCache = new Map(); // lawId -> Map<articleNum, article>
+const lawArticlesCache = new Map();
 
 async function getLawIdByName(lawName) {
   if (lawIdCache.has(lawName)) return lawIdCache.get(lawName);
@@ -162,7 +154,6 @@ async function getLawIdByName(lawName) {
   return null;
 }
 
-// 2. 법령 ID별 원본 조문 Map 가져오기 (1회만 API 호출 후 메모리 캐싱)
 async function getLawArticleMap(lawId) {
   if (lawArticlesCache.has(lawId)) return lawArticlesCache.get(lawId);
 
@@ -190,12 +181,10 @@ async function getLawArticleMap(lawId) {
   }
 }
 
-// 3. 참조 추출 (외부 참조 문구를 먼저 떼어낸 뒤 순수 내부 참조만 추출)
 function extractReferences(content) {
   if (!content) return { internal: [], external: [] };
 
   const external = [];
-  // 외부 참조 (예: "형법 제257조") 추출 및 해당 문자열 제거
   const cleanContent = content.replace(
     /([가-힣]+법)\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
     (match, lawName, articleNum) => {
@@ -204,14 +193,12 @@ function extractReferences(content) {
     }
   );
 
-  // 남은 텍스트에서 순수 내부 참조 (예: "제15조") 추출
   const internalMatches = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)];
   const internal = internalMatches.map((m) => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
 
   return { internal, external };
 }
 
-// 4. LawParser (기존 로직 유지)
 const LawParser = {
   getCanonicalArticleNum(article, joContent) {
     const rawNum = String(article?.["조문번호"] || "").trim();
@@ -288,9 +275,7 @@ const LawParser = {
     const lines = [];
     const hangTexts = [];
 
-    if (articleHeader) {
-      lines.push(articleHeader);
-    }
+    if (articleHeader) lines.push(articleHeader);
 
     if (hangs) {
       const hangList = Array.isArray(hangs) ? hangs : [hangs];
@@ -304,22 +289,11 @@ const LawParser = {
           if (articleHeader && cleanHText.startsWith(articleHeader)) {
             cleanHText = cleanHText.replace(articleHeader, "").trim();
           }
-          if (cleanHText) {
-            hLines.push(this.formatItemLine(hNo, cleanHText, ""));
-          }
+          if (cleanHText) hLines.push(this.formatItemLine(hNo, cleanHText, ""));
         }
 
         if (h?.["호"]) {
-          const hoLines = this.parseSubItems(
-            h,
-            "호",
-            "호번호",
-            "호내용",
-            "목",
-            "목번호",
-            "목내용",
-            "  "
-          );
+          const hoLines = this.parseSubItems(h, "호", "호번호", "호내용", "목", "목번호", "목내용", "  ");
           hLines.push(...hoLines);
         }
 
@@ -330,16 +304,7 @@ const LawParser = {
         }
       });
     } else if (hos) {
-      const hoLines = this.parseSubItems(
-        article,
-        "호",
-        "호번호",
-        "호내용",
-        "목",
-        "목번호",
-        "목내용",
-        "  "
-      );
+      const hoLines = this.parseSubItems(article, "호", "호번호", "호내용", "목", "목번호", "목내용", "  ");
       if (hoLines.length > 0) {
         const joined = hoLines.join("\n");
         hangTexts.push(joined);
@@ -369,7 +334,6 @@ const LawParser = {
   }
 };
 
-// 5. LawService (캐시 기반 안전 수집 및 referencedContent 결합)
 const LawService = {
   async fetchLawArticles(lawId) {
     if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
@@ -384,38 +348,39 @@ const LawService = {
           const collected = new Map();
 
           const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 2) => {
-  if (!articleNum) return;
+            if (!articleNum) return;
 
-  const key = `${currentLawId}_${articleNum}`;
-  if (visited.has(key)) return;
-  visited.add(key);
+            const key = `${currentLawId}_${articleNum}`;
+            if (visited.has(key)) return;
+            visited.add(key);
 
-  const currentMap = await getLawArticleMap(currentLawId);
-  const article = currentMap?.get(articleNum);
+            const currentMap = await getLawArticleMap(currentLawId);
+            const article = currentMap?.get(articleNum);
 
-  if (!article || article.isDeleted) return;
-  collected.set(key, article);
+            if (!article || article.isDeleted) return;
+            collected.set(key, article);
 
-  const { internal, external } = extractReferences(article.content);
-  const totalRefCount = internal.length + external.length;
+            const { internal, external } = extractReferences(article.content);
+            const totalRefCount = internal.length + external.length;
 
-  const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
-  if (currentDepth >= effectiveMaxDepth) return;
+            const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
+            if (currentDepth >= effectiveMaxDepth) return;
 
-  // 1. 내부 참조 (순서 보장을 위해 순차 처리)
-  for (const refNum of internal) {
-    await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
-  }
+            for (const refNum of internal) {
+              await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
+            }
 
-  // 2. 외부 참조 (targetLawId !== currentLawId 버그 수정 적용)
-  for (const ext of external) {
-    const targetLawId = await getLawIdByName(ext.lawName);
-    if (targetLawId && targetLawId !== currentLawId) {
-      await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
-    }
-  }
-};
+            for (const ext of external) {
+              const targetLawId = await getLawIdByName(ext.lawName);
+              if (targetLawId && targetLawId !== currentLawId) {
+                await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
+              }
+            }
+          };
+
           const selfKey = `${lawId}_${parsed.num}`;
+          await collectArticle(lawId, parsed.num);
+
           const referencedContent = Array.from(collected.entries())
             .filter(([k]) => k !== selfKey)
             .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
@@ -440,7 +405,7 @@ const LawService = {
 };
 
 // ============================================================================
-// 4. 퀴즈 생성 및 검증 서비스 (Quiz AI Service)
+// 4. 프롬프트 정의 (Prompts)
 // ============================================================================
 const PROMPTS = {
   generate: (article, content, refContent) => `
@@ -452,44 +417,21 @@ const PROMPTS = {
 ${content}
 
 ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
-위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. 조금이라도 모르면 내지 말고 ㅅㅂ 하나라도 만족하지 않을시 재생성하시오.
+위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요.
 □ 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적 법률 사례 문제를 만드세요.
 □ 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 자세히 작성하시오.
 □ 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
-□ ⚠️조문 원문에서 기간 및 정도, 금액이 나오는 부분과 법률 적용 판별 기준은 반드시 볼드(e.g. **2개월**, **높은 비율로**, **더 높은 금액", **1/3비율**)표시하고 예의 주시해서 날짜 및 금액 계산하시어 해설에도 똑같이 원문에 있는 기간을 대응작성하시고 **더 높은 금액**이면 실제로 정답 후보 중 비교하여 더 높은 금액이 정답으로 설정되어야 한다. 또한, 정도가 나오는 부분과 법률 적용 판별 기준도 대응작성하시오.
-□ 해설 내 텍스트가 정확한 설명이 아닐 경우, 혹은 아래의 경우에는 explanation 내 Boolean 필드에 false 처리하시오.
-- ⚠️인용 조항이 조금이라도 애매하거나 법적으로 잘못 해석될 여지가 있을 경우
-- ⚠️없는 조문을 지어내는 경우
-- ⚠️인용할 법률의 조항 번호와 내용이 잘못 써있거나 상반되는 경우 
-- ⚠️기간 및 집행, 시행 주체가 실제 법령과 다르게 잘못 서술한 경우
-- 법령의 법리 자체를 잘못 해석하거나 혼동한 경우
-- 예시를 잘못 들었을 경우
-□ 조항 번호를 하나도 모르겠으면 비워놓고 번호를 제외한 내용만 써놓으시오. 또한, 적용예시와 부가설명은 절대 해설에 삽입하지 마시오.
-□ 질문에서 묻는 바(예: 소멸시효 기간, 공소 시효 기간, 행정 절차 기간 등), 정답 보기(options/answer), 해설(explanation)의 수치·단위·시점이 실제 법령 조문과 100% 일치해야 합니다.
-□ 질문이 특정 법적 개념(예: '소멸시효는 얼마인가?', '효력이 발생하는 날은 언제인가?')을 물을 경우, 정답 보기는 그 질문에 직접적으로 대응하는 단위와 수치(예: '3년')여야 하며, 질문과 무관한 시점이나 엉뚱한 조건(예: '1개월이 지난 시점')을 정답으로 설정하지 마시오.
-□ 질문에 맞는 정답이 해설 첫 두 문장 중 하나라도 일치하지 않으면 다시 출제하시오.
-□ 범죄자가 한 행위 자체와 행위 자체를 실제로 당사자에게 행하였을때, 사용했을때를 반드시 심리적 해석과 실제 법령에 맞게 구분하여 작성하시오.
-□ 질문의 질문 의도, 정답 내용, 해설의 법리 해석 간에 단 하나라도 삼박자가 맞지 않거나 논리적 핀트가 어긋나면 문제 작성을 중단하고 재생성하시오.
-□ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하고, 수식 관계를 명확히 쉼표로 구분하시오.
+□ ⚠️조문 원문에서 기간 및 정도, 금액이 나오는 부분과 법률 적용 판별 기준은 반드시 볼드(e.g. **2개월**, **높은 비율로**, **더 높은 금액", **1/3비율**)표시하고 예의 주시해서 날짜 및 금액 계산하시어 해설에도 똑같이 원문에 있는 기간을 대응작성하시오.
+□ 질문에서 묻는 바, 정답 보기(options/answer), 해설(explanation)의 수치·단위·시점이 실제 법령 조문과 100% 일치해야 합니다.
+□ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하시오.
 □ 반드시 순수 JSON만 출력하세요.
-□ 객체, 배열, 중첩 JSON을 explanation 값으로 사용하지 마세요.
-□ 해설이 여러 문장인 경우 하나의 문자열 안에 줄바꿈(\\n)을 사용하세요.
-□ 해설엔 질문의 논리에 부합하고 정확한 법령 조문(조, 항, 호, 목)을 명확히 인용하며, 특히 호/목에 해당하는 내용일 경우 해당 호/목까지 정확히 인용(예: 도로교통법 제160조제3항제1호)하여 작성하시오.
-→ 인용 조항 내용은 정확히 명시된 것만 인용하시고 추측 및 억측하지 마시오.
-□ **오류 WORST 6**
- - 질문의 목적과 의도, 법적 해석에 모두 어긋나는 정답, 해설이 있는경우
- - 실제 법령에 맞지 않는 정답을 제시할 경우 (⚠️어쨌든 수시 적성검사를 받은 병원의 장은 절대로 정답이 아니니 내지 마시오.)
- - 실제 법령과 전혀 다른 조문을 인용한 경우 
- - 유사 개념을 혼동하여 설명하거나 잘못된 해석을 한 경우
- - 질문, 해설, 답에서 의무(~해야한다)와 권고(~할 수 있다)를 잘못 구별하여 쓴 경우
- - 직계존속은 형법 제1001조에 없다 병신아 ㅅㅂ 나대지마라
 
 출력 형식:
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
-  "concept_summary": "[문제 푸는 목표, 법률이 적용되는 주체, 법률을 어떻게 해석하는지의 의도, 준용 조항]",
-  "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설 및 정확한 준용 조항]", "Boolean": "true"},
+  "concept_summary": "[문제 푸는 목표 및 의도]",
+  "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설]", "Boolean": true},
   "question": "[질문 내용]",
   "options": [
     {"text": "[정답 내용]", "is_correct": true},
@@ -500,54 +442,55 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "answer": "[정답 내용과 동일 텍스트]",
   "timer_sec": 15
 }`,
-  validate: (validationPayload) => `
-당신은 사실성과 법리성, 법령 정확성, 계산 정확성을 우선으로 하는 대한민국 법률 퀴즈 검증 및 교정관입니다. 
-제시된 퀴즈가 아래 [원문 조문 및 참조/인용 조문]과 일치하는지 검증하고, 원문과 불합치하거나 전혀 다르거나 질문-정답-해설 내 전체 텍스트 간 모순이 있을 경우 원문 조문 스니펫을 완벽히 반영하여 자동 수정(Snippet Auto-Fix)하십시오.
 
-[검증 및 교정 기준]
-0.  ***걍 모르겠거나 조금이라도 애매하거나 검증 불가하면 false 처리하시오.***
-1. 질문·보기·해설의 인용 조항 내용, 법적 수치, 시점, 주체, 법리 해석이 [원문 조문 및 참조/인용 조문]과 100% 일치해야 합니다.
-2. 상관관계와 인과관계, 선후관계가 올바르지 않으며, 유사 법률, 대립되는 법률을 혼동했다면 false 처리하시오.
-3. 질문에서 의도한 기간 조건이 정답에서 제대로 계산되었는지 실제 법령과 비교하며 검사하시오. 시효 기간을 실제 법령과 다르게 잘못 서술한 경우 false 처리하시오.
-4. 권리, 의무, 원칙, 예외, 가능 등의 사항과 준용 조항을 착각하여 실제 법령에 맞지 않게 잘못 해석했다면 false 처리하시오.
- → 해설 내 인용 및 준용 조항이 조금이라도 애매하거나 법적으로 잘못 해석되어 있거나 조항 번호(조, 항, 호, 목)를 1자라도 잘못 적은 경우, valid: false 처리하십시오.
-5. 실제로 없는 법령 조문 및 조항, 벌칙을 지어내진 않았는지, 실제 적용될 법령의 조항 번호를 착각 및 환각했거나 실존하지 않는 조항번호인지 확인하시오.
-6. 전혀 관련없는 법령 조문을 질문 및 해설에 끼어넣었다고 판단되면 valid: false 처리하십시오.
-7. 해당 법령의 권리·의무·제재·절차 등이 문제에서 제시된 주체에게 실제로 적용되는지 확인하시오.
-8. 질문이 묻는 본질 및 계산법(예: 소멸시효 기간, 조건에 맞는 금액 계산 및 비교), 정답 보기의 내용, 해설 내 법령 인용(조, 항, 호, 목) 및 수치/시점이 서로 완벽히 부합하는지 확인하시오.
- → 이에 맞는 정답과 해설이 어긋나있으면 정답과 해설을 교정한 repairedQuiz 객체를 반드시 생성하십시오.
-9. 해설 내에 예시를 잘못 들었으면 false 처리하시고, 그 내용만 삭제하여 repairedQuiz하시오.
-10. 질문에 맞는 정답과 해설의 첫 두 문장 간 내용이 불합치하거나 핀트가 어긋나면 valid: false 처리하십시오.
-10-1. 이후 해설에서 잘못된 법리적 설명이 들어갈 경우 valid: false 처리하십시오.
-10-2. 법률 및 행정 용어를 혼동했다고 판단된다면 valid: false 처리하십시오. 
-11. valid: false인 경우, 오직 [원문 조문 및 참조/인용 조문] 텍스트 스니펫에 근거하여 질문, 4지선다 보기(정답 1개 필수), 정답(answer), 해설(explanation), 인용조항을 즉시 정밀 교정한 repairedQuiz 객체를 반드시 생성하십시오.(단순히 바꾸는것은 금함)
-12. valid: true인 경우 repairedQuiz는 null로 설정하십시오.
-13. 실제 법령엔 의무 사항인데 권고 사항으로 오인하거나, 권고 사항인데 의무 사항으로 질문, 답, 해설에 잘못 서술될 경우, valid: false 처리하십시오.
+  blindSolve: (quiz) => `
+당신은 대한민국 법률 시험 수험생입니다. 법령 원문이나 정답, 해설 없이 아래의 [질문]과 [보기]만 보고 정답을 고르세요.
 
-### OUTPUT FORMAT (JSON ONLY)
+[질문]
+${quiz.question}
+
+[보기]
+1. ${quiz.options?.[0]?.text}
+2. ${quiz.options?.[1]?.text}
+3. ${quiz.options?.[2]?.text}
+4. ${quiz.options?.[3]?.text}
+
+규칙:
+1. 4개 보기 중 가장 정확한 정답 1개만 고르시오.
+2. 선택한 보기의 텍스트와 정확하게 동일한 문자열을 chosen_answer 필드에 적으시오.
+3. 오직 순수 JSON만 출력하시오.
+
+출력 형식:
+{
+  "chosen_answer": "[선택한 보기의 정확한 텍스트]",
+  "reason": "[풀이 이유]"
+}`,
+
+  factCheck: (validationPayload) => `
+당신은 대한민국 법률 팩트체크 검증관입니다.
+제시된 퀴즈가 아래 [원문 조문 및 참조/인용 조문]과 100% 법리적·사실적으로 일치하는지 검증하십시오.
+
+[검증 기준]
+1. 질문, 정답, 해설 내 수치(기간/금액/비율), 시점, 법적 주체, 의무/권고 구분이 원문과 정확히 일치하는가?
+2. 인용한 조항 번호(조, 항, 호, 목)가 실존하며 내용과 상통하는가?
+3. 법리 해석이나 판례/예시 적용에 오류 및 모순이 없는가?
+
+위 기준 중 하나라도 어긋나거나 애매할 경우 valid: false 처리하십시오.
+
+출력 형식 (JSON ONLY):
 {
   "valid": boolean,
-  "reason": "검증 실패 원인 또는 수정 내역 (e.g. 이 법에 대해서 모름/ 조항번호가 실존하지 않음/ 법률용어 혼동/ 인용조항 내용을 잘못 제시함/ 잘못된 예시)",
-  "repairedQuiz": {
-    "id": "${validationPayload.quiz.id}",
-    "category": "${validationPayload.quiz.category}",
-    "explanation": {"string": "[원문 조문 스니펫과 완벽히 부합하도록 수정한 해설]", "Boolean": "true"},
-    "question": "[질문 의도와 원문 조문에 맞게 수정한 질문]",
-    "options": [
-      {"text": "[정답 내용]", "is_correct": true},
-      {"text": "[오답 1]", "is_correct": false},
-      {"text": "[오답 2]", "is_correct": false},
-      {"text": "[오답 3]", "is_correct": false}
-    ],
-    "answer": "[정답 내용과 동일 텍스트]",
-    "timer_sec": 15
-  } | null
+  "reason": "[검증 결과 및 사유]"
 }
 
-[원문 조문 및 퀴즈 데이터] : ${JSON.stringify(validationPayload, null, 2)}
+[원문 조문 및 퀴즈 데이터]
+${JSON.stringify(validationPayload, null, 2)}
 `
 };
 
+// ============================================================================
+// 5. 퀴즈 서비스 및 3단계 검증 파이프라인 (Quiz AI Service)
+// ============================================================================
 const QuizService = {
   lastCallAt: 0,
   
@@ -580,40 +523,139 @@ const QuizService = {
     const prompt = PROMPTS.generate(article, content, refContent);
 
     try {
-      const quiz = await this.requestMistral(prompt, "xhigh");
-      return Utils.normalizeQuiz(quiz);
+      const rawQuiz = await this.requestMistral(prompt, "xhigh");
+      return Utils.normalizeQuiz(rawQuiz);
     } catch (err) {
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
         await Utils.sleep(1500);
         return this.generateQuiz(article, retriesLeft - 1);
       }
-      return console.error("Mistral API 오류:", err.message), null;
+      console.error("Mistral 퀴즈 생성 API 오류:", err.message);
+      return null;
     }
   },
 
-  async validateSingleQuiz(quiz, article) {
+  // --------------------------------------------------------------------------
+  // 검증 1단계: 필수 필드 검증 (Required Field Validation)
+  // --------------------------------------------------------------------------
+  validateRequiredFields(quiz) {
+    if (!quiz || typeof quiz !== "object") {
+      return { valid: false, reason: "퀴즈 객체 데이터 없음" };
+    }
+    if (!quiz.question || typeof quiz.question !== "string" || !quiz.question.trim()) {
+      return { valid: false, reason: "필수 필드 누락: question" };
+    }
+    if (!quiz.answer || typeof quiz.answer !== "string" || !quiz.answer.trim()) {
+      return { valid: false, reason: "필수 필드 누락: answer" };
+    }
+    if (!quiz.explanation?.string || typeof quiz.explanation.string !== "string" || !quiz.explanation.string.trim()) {
+      return { valid: false, reason: "필수 필드 누락: explanation.string" };
+    }
+    if (quiz.explanation.Boolean !== true) {
+      return { valid: false, reason: "explanation.Boolean 필드가 true가 아님" };
+    }
+    if (!Array.isArray(quiz.options) || quiz.options.length !== 4) {
+      return { valid: false, reason: `보기는 정확히 4개여야 함 (현재: ${quiz.options?.length ?? 0}개)` };
+    }
+
+    const correctOptions = quiz.options.filter(opt => opt.is_correct === true);
+    if (correctOptions.length !== 1) {
+      return { valid: false, reason: `정답 보기(is_correct=true)는 정확히 1개여야 함 (현재: ${correctOptions.length}개)` };
+    }
+
+    if (correctOptions[0].text.trim() !== quiz.answer.trim()) {
+      return { valid: false, reason: "answer 필드 값과 정답 보기(is_correct=true)의 텍스트가 일치하지 않음" };
+    }
+
+    return { valid: true };
+  },
+
+  // --------------------------------------------------------------------------
+  // 검증 2단계: 블라인드 솔버 검증 (Blind Solver Validation)
+  // --------------------------------------------------------------------------
+  async validateBlindSolver(quiz) {
+    try {
+      const prompt = PROMPTS.blindSolve(quiz);
+      const res = await this.requestMistral(prompt, "high");
+
+      if (!res || !res.chosen_answer) {
+        return { valid: false, reason: "블라인드 솔버 응답 파싱 실패" };
+      }
+
+      const solverChoice = String(res.chosen_answer).trim();
+      const expectedAnswer = String(quiz.answer).trim();
+
+      const isMatch = solverChoice === expectedAnswer;
+      return {
+        valid: isMatch,
+        reason: isMatch
+          ? "블라인드 솔버 풀이 성공 (정답 일치)"
+          : `블라인드 솔버 답안 불일치 (솔버 선택: "${solverChoice}" vs 출제 정답: "${expectedAnswer}")`,
+      };
+    } catch (err) {
+      console.error("블라인드 솔버 실행 오류:", err.message);
+      return { valid: false, reason: `블라인드 솔버 실행 실패: ${err.message}` };
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // 검증 3단계: 최종 팩트체크 검증 (Final Fact-Check Verification)
+  // --------------------------------------------------------------------------
+  async validateFactCheck(quiz, article) {
     const sourceText = String(article?.content || "").replace(/[ \t]+/g, " ").trim();
     const refText = String(article?.referencedContent || "").trim();
-    if (!sourceText) return { valid: false, reason: "원문 누락", repairedQuiz: null };
+    if (!sourceText) return { valid: false, reason: "원문 조문 누락" };
 
-    const fullSourceContext = refText ? `[출제 조문 (${article.num})]\n${sourceText}\n\n[참조/인용 조문]\n${refText}` : `[출제 조문 (${article.num})]\n${sourceText}`;
-    
+    const fullSourceContext = refText
+      ? `[출제 조문 (${article.num})]\n${sourceText}\n\n[참조/인용 조문]\n${refText}`
+      : `[출제 조문 (${article.num})]\n${sourceText}`;
+
     const validationPayload = {
       source: { lawName: String(article.lawName), articleNumber: String(article.num), content: fullSourceContext },
       quiz,
     };
 
     try {
-      const parsed = await this.requestMistral(PROMPTS.validate(validationPayload), "high");
+      const parsed = await this.requestMistral(PROMPTS.factCheck(validationPayload), "high");
       return {
-        valid: parsed.valid ?? false,
-        reason: String(parsed.reason || ""),
-        repairedQuiz: parsed.repairedQuiz ? Utils.normalizeQuiz(parsed.repairedQuiz) : null,
+        valid: parsed?.valid === true,
+        reason: String(parsed?.reason || "팩트체크 검증 수행 완료"),
       };
     } catch (err) {
-      console.error("Mistral 검증/수정 호출 오류:", err.message);
-      return { valid: true, reason: "검증 API 호출 실패로 임시 통과", repairedQuiz: null };
+      console.error("최종 팩트체크 API 호출 오류:", err.message);
+      return { valid: false, reason: `팩트체크 API 호출 실패: ${err.message}` };
     }
+  },
+
+  // --------------------------------------------------------------------------
+  // 3단계 통합 검증 실행기
+  // --------------------------------------------------------------------------
+  async runValidationPipeline(quiz, article) {
+    // 1단계: 필수 필드 검증
+    const step1 = this.validateRequiredFields(quiz);
+    if (!step1.valid) {
+      console.warn(`  └ [1단계 실패] ${step1.reason}`);
+      return { valid: false, step: 1, reason: step1.reason };
+    }
+    console.log("  └ [1단계 통과] 필수 필드 검증 성공");
+
+    // 2단계: 블라인드 솔버 검증
+    const step2 = await this.validateBlindSolver(quiz);
+    if (!step2.valid) {
+      console.warn(`  └ [2단계 실패] ${step2.reason}`);
+      return { valid: false, step: 2, reason: step2.reason };
+    }
+    console.log("  └ [2단계 통과] 블라인드 솔버 일치 확인");
+
+    // 3단계: 최종 팩트체크 검증
+    const step3 = await this.validateFactCheck(quiz, article);
+    if (!step3.valid) {
+      console.warn(`  └ [3단계 실패] ${step3.reason}`);
+      return { valid: false, step: 3, reason: step3.reason };
+    }
+    console.log("  └ [3단계 통과] 법령 조문 원문 팩트체크 성공");
+
+    return { valid: true, reason: "3단계 검증 파이프라인 전체 통과" };
   },
 
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
@@ -622,62 +664,27 @@ const QuizService = {
       const article = await LawService.fetchRandomArticle(law);
       if (!article) continue;
 
+      console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
+
       const quiz = await this.generateQuiz(article);
-      if (!quiz) continue;
-
-      const validation = await this.validateSingleQuiz(quiz, article);
-
-      if (validation?.valid === true) {
-        const revalidation = await this.validateSingleQuiz(quiz, article);
-        if (revalidation?.valid === true) {
-          console.log(`[슬롯 ${slotIndex}] 최종 생성/검증 성공 (시도 ${attempt})`);
-          return quiz;
-        }
+      if (!quiz) {
+        console.warn(`[슬롯 ${slotIndex}] 퀴즈 생성 실패`);
+        continue;
       }
 
-      if (validation?.repairedQuiz) {
-        const secondValidation = await this.validateSingleQuiz(validation.repairedQuiz, article);
-        const finalRepairedQuiz = secondValidation?.repairedQuiz || validation.repairedQuiz;
-        const finalReason = secondValidation?.repairedQuiz ? secondValidation.reason : validation.reason;
-        console.log(`\n================ [슬롯 ${slotIndex} 자동 수정 내역 디버깅] ================`);
-    console.log(`- 사유: ${finalReason}`);
-    console.log(`- 수정 전 질문: ${quiz.question}`);
-    console.log(`- 수정 후 질문: ${finalRepairedQuiz.question}`);
-    console.log(`- 수정 전 해설: ${quiz.explanation?.string}`);
-    console.log(`- 수정 후 해설: ${finalRepairedQuiz.explanation?.string}`);
-    console.log(`- 수정 전 정답: ${quiz.answer}`);
-    console.log(`- 수정 후 정답: ${finalRepairedQuiz.answer}`);
-    console.log(`========================================================================\n`);
-
-    // 실제 성공 여부 판단 후 안함
-    
-        if (secondValidation?.valid !== true) {
-    console.warn(`[슬롯 ${slotIndex}] 수정본 재검증 탈락: ${secondValidation?.reason}`);
-    continue;   // 다음 시도로
-        }
-        const isSuccess = secondValidation?.valid || secondValidation?.repairedQuiz;
-    if (isSuccess) {
-        console.log(`[슬롯 ${slotIndex}] false문제 최종 재생성/검증 성공`);
-    }
-
-        return {
-          ...finalRepairedQuiz,
-          isRepaired: true,
-          repairReason: finalReason,
-          debugInfo: {
-            originalQuestion: quiz.question,
-            originalAnswer: quiz.answer,
-            originalExplanation: quiz.explanation,
-          },
-        };
+      const result = await this.runValidationPipeline(quiz, article);
+      if (result.valid) {
+        console.log(`[슬롯 ${slotIndex}] 최종 검증 성공 (시도 ${attempt})`);
+        return quiz;
       }
     }
-    return console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증/자동수정 시도 실패`), null;
+    console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 3단계 검증 시도 실패`);
+    return null;
   }
 };
 
 // ============================================================================
-// 5. API 라우팅 (API Routes)
+// 6. API 라우팅 (API Routes)
 // ============================================================================
 app.get("/api/lawquizzes/latest", async (req, res) => {
   try {
@@ -689,20 +696,20 @@ app.get("/api/lawquizzes/latest", async (req, res) => {
     return res.json(quizzes);
   } catch (err) {
     console.error("최신 퀴즈 조회 오류:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message, serverError: true });
   }
 });
 
 app.post("/api/lawquizzes/new", async (req, res) => {
   try {
-    console.log("=== 병렬 퀴즈 세트 생성 시작 ===");
+    console.log("=== 병렬 퀴즈 세트 생성 및 3단계 검증 시작 ===");
     const quizPromises = [1, 2, 3].map((index) => QuizService.generateValidQuizSlot(index));
     const results = await Promise.all(quizPromises);
     const newQuizzes = results.filter(Boolean);
     console.log(`=== 퀴즈 세트 생성 완료: ${newQuizzes.length}/3 ===`);
 
     if (newQuizzes.length === 0) {
-      return res.status(400).json({ error: "퀴즈 생성 실패", message: "퀴즈 생성 시도가 모두 실패했습니다." });
+      return res.status(400).json({ error: "퀴즈 생성 실패", message: "퀴즈 생성 및 3단계 검증 시도가 모두 실패했습니다.", serverError: true });
     }
 
     const quizSetId = String(Date.now());
@@ -712,7 +719,7 @@ app.post("/api/lawquizzes/new", async (req, res) => {
     return res.json(newQuizzes);
   } catch (err) {
     console.error("퀴즈 세트 생성 중 오류 발생:", err);
-    return res.status(500).json({ error: "퀴즈 생성 오류", message: err?.message || "알 수 없는 오류" });
+    return res.status(500).json({ error: "퀴즈 생성 오류", message: err?.message || "알 수 없는 오류", serverError: true });
   }
 });
 
@@ -725,7 +732,7 @@ app.get("/api/mistral-models", async (req, res) => {
     return res.json({ models });
   } catch (err) {
     console.error("Mistral 모델 목록 조회 오류:", err.message);
-    return res.status(err?.response?.status || 500).json({ error: "Mistral 모델 목록 조회 실패", message: err?.response?.data?.message || err.message });
+    return res.status(err?.response?.status || 500).json({ error: "Mistral 모델 목록 조회 실패", message: err?.response?.data?.message || err.message, serverError: true });
   }
 });
 
