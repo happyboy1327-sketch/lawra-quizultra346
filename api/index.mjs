@@ -649,8 +649,13 @@ const QuizService = {
     console.log(`- 수정 후 정답: ${finalRepairedQuiz.answer}`);
     console.log(`========================================================================\n`);
 
-    // 실제 성공 여부 판단 후 로그 출력
-    const isSuccess = secondValidation?.isValid || secondValidation?.repairedQuiz;
+    // 실제 성공 여부 판단 후 안함
+    
+        if (secondValidation?.valid !== true) {
+    console.warn(`[슬롯 ${slotIndex}] 수정본 재검증 탈락: ${secondValidation?.reason}`);
+    continue;   // 다음 시도로
+        }
+        const isSuccess = secondValidation?.valid || secondValidation?.repairedQuiz;
     if (isSuccess) {
         console.log(`[슬롯 ${slotIndex}] false문제 최종 재생성/검증 성공`);
     }
