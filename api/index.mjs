@@ -457,12 +457,12 @@ ${quiz.question}
 
 규칙:
 1. 4개 보기 중 가장 정확한 정답 1개만 고르시오.
-2. 선택한 보기의 텍스트와 정확하게 동일한 문자열을 chosen_answer 필드에 적으시오.
+2. 선택한 보기의 텍스트를 chosen_answer 필드에 적되, 보기 번호(1., 2., 3., 4.)는 완전히 제외하고 pure 보기 텍스트만 적으시오.
 3. 오직 순수 JSON만 출력하시오.
 
 출력 형식:
 {
-  "chosen_answer": "[선택한 보기의 정확한 텍스트]",
+  "chosen_answer": "[선택한 보기의 본문 텍스트]",
   "reason": "[풀이 이유]"
 }`,
 
@@ -535,9 +535,7 @@ const QuizService = {
     }
   },
 
-  // --------------------------------------------------------------------------
-  // 검증 1단계: 필수 필드 검증 (Required Field Validation)
-  // --------------------------------------------------------------------------
+  // 1단계: 필수 필드 검증
   validateRequiredFields(quiz) {
     if (!quiz || typeof quiz !== "object") {
       return { valid: false, reason: "퀴즈 객체 데이터 없음" };
@@ -570,9 +568,7 @@ const QuizService = {
     return { valid: true };
   },
 
-  // --------------------------------------------------------------------------
-  // 검증 2단계: 블라인드 솔버 검증 (Blind Solver Validation)
-  // --------------------------------------------------------------------------
+  // 2단계: 블라인드 솔버 검증 (번호 Prefix 정규화 적용)
   async validateBlindSolver(quiz) {
     try {
       const prompt = PROMPTS.blindSolve(quiz);
@@ -582,8 +578,12 @@ const QuizService = {
         return { valid: false, reason: "블라인드 솔버 응답 파싱 실패" };
       }
 
-      const solverChoice = String(res.chosen_answer).trim();
-      const expectedAnswer = String(quiz.answer).trim();
+      const rawChoice = Utils.normalizeText(res.chosen_answer);
+      const rawExpected = Utils.normalizeText(quiz.answer);
+
+      // 보기 번호 Prefix("1. ", "4. " 등) 제거
+      const solverChoice = rawChoice.replace(/^\d+\.\s*/, "").trim();
+      const expectedAnswer = rawExpected.replace(/^\d+\.\s*/, "").trim();
 
       const isMatch = solverChoice === expectedAnswer;
       return {
@@ -598,9 +598,7 @@ const QuizService = {
     }
   },
 
-  // --------------------------------------------------------------------------
-  // 검증 3단계: 최종 팩트체크 검증 (Final Fact-Check Verification)
-  // --------------------------------------------------------------------------
+  // 3단계: 최종 팩트체크 검증 (사유 정규화 적용)
   async validateFactCheck(quiz, article) {
     const sourceText = String(article?.content || "").replace(/[ \t]+/g, " ").trim();
     const refText = String(article?.referencedContent || "").trim();
@@ -617,9 +615,10 @@ const QuizService = {
 
     try {
       const parsed = await this.requestMistral(PROMPTS.factCheck(validationPayload), "high");
+      const reasonText = Utils.normalizeText(parsed?.reason) || "팩트체크 검증 수행 완료";
       return {
         valid: parsed?.valid === true,
-        reason: String(parsed?.reason || "팩트체크 검증 수행 완료"),
+        reason: reasonText,
       };
     } catch (err) {
       console.error("최종 팩트체크 API 호출 오류:", err.message);
@@ -627,11 +626,8 @@ const QuizService = {
     }
   },
 
-  // --------------------------------------------------------------------------
   // 3단계 통합 검증 실행기
-  // --------------------------------------------------------------------------
   async runValidationPipeline(quiz, article) {
-    // 1단계: 필수 필드 검증
     const step1 = this.validateRequiredFields(quiz);
     if (!step1.valid) {
       console.warn(`  └ [1단계 실패] ${step1.reason}`);
@@ -639,7 +635,6 @@ const QuizService = {
     }
     console.log("  └ [1단계 통과] 필수 필드 검증 성공");
 
-    // 2단계: 블라인드 솔버 검증
     const step2 = await this.validateBlindSolver(quiz);
     if (!step2.valid) {
       console.warn(`  └ [2단계 실패] ${step2.reason}`);
@@ -647,7 +642,6 @@ const QuizService = {
     }
     console.log("  └ [2단계 통과] 블라인드 솔버 일치 확인");
 
-    // 3단계: 최종 팩트체크 검증
     const step3 = await this.validateFactCheck(quiz, article);
     if (!step3.valid) {
       console.warn(`  └ [3단계 실패] ${step3.reason}`);
