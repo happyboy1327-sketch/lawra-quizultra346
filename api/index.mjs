@@ -66,7 +66,6 @@ app.use((req, res, next) => {
 const Utils = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 
-  // 배열 무작위 셔플 (Fisher-Yates 알고리즘)
   shuffle: (array) => {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -112,7 +111,6 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
-    // 보기를 무작위로 셔플
     const options = this.shuffle(rawOptions);
 
     const normalized = {
@@ -132,6 +130,7 @@ const Utils = {
     return normalized;
   }
 };
+
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
@@ -413,8 +412,9 @@ const LawService = {
 
   async fetchRandomArticle(law) {
     const articles = await this.fetchLawArticles(law.lawId);
-    if (!articles.length) return console.warn("사용 가능한 조문 없음:", law.lawName), null;
-    return articles[Math.floor(Math.random() * articles.length)];
+    const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
+    if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
+    return validArticles[Math.floor(Math.random() * validArticles.length)];
   }
 };
 
@@ -489,6 +489,7 @@ ${quiz.question}
 1. 질문, 정답, 해설 내 수치(기간/금액/비율), 시점, 법적 주체, 의무/권고 구분이 원문과 정확히 일치하는가?
 2. 인용한 조항 번호(조, 항, 호, 목)가 실존하며 내용과 상통하는가?
 3. 법리 해석이나 판례/예시 적용에 오류 및 모순이 없는가?
+4. 정답(answer)과 해설(explanation)의 논리가 서로 완전하게 일치하는가? (정답과 해설의 논리가 일치하지 않거나 상충되면 무조건 valid: false 처리하십시오)
 
 위 기준 중 하나라도 어긋나거나 애매할 경우 valid: false 처리하십시오.
 
@@ -531,7 +532,7 @@ const QuizService = {
   },
 
   async generateQuiz(article, retriesLeft = 2) {
-    if (!article?.lawName || !article?.num) return null;
+    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) return null;
     
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
@@ -583,8 +584,7 @@ const QuizService = {
     return { valid: true };
   },
 
-  // 2단계: 블라인드 솔버 검증 (번호 Prefix 정규화 적용)
-  // 2단계: 블라인드 솔버 검증 (번호 선택 방식)
+  // 2단계: 블라인드 솔버 검증
   async validateBlindSolver(quiz) {
     try {
       const prompt = PROMPTS.blindSolve(quiz);
@@ -610,7 +610,7 @@ const QuizService = {
     }
   },
 
-  // 3단계: 최종 팩트체크 검증 (사유 정규화 적용)
+  // 3단계: 최종 팩트체크 검증
   async validateFactCheck(quiz, article) {
     const sourceText = String(article?.content || "").replace(/[ \t]+/g, " ").trim();
     const refText = String(article?.referencedContent || "").trim();
