@@ -66,6 +66,16 @@ app.use((req, res, next) => {
 const Utils = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 
+  // 배열 무작위 셔플 (Fisher-Yates 알고리즘)
+  shuffle: (array) => {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  },
+
   isRateLimitError: (error) => {
     const status = error?.statusCode || error?.status || error?.response?.status;
     return status === 429 || /429|rate.?limit/i.test(error?.message || "");
@@ -97,6 +107,14 @@ const Utils = {
       return { string: this.normalizeText(rawExpl), Boolean: true };
     })();
 
+    const rawOptions = (Array.isArray(quiz.options) ? quiz.options : []).map(opt => ({
+      text: this.normalizeText(opt?.text ?? opt),
+      is_correct: opt?.is_correct === true,
+    }));
+
+    // 보기를 무작위로 셔플
+    const options = this.shuffle(rawOptions);
+
     const normalized = {
       ...quiz,
       id: this.normalizeText(quiz.id),
@@ -105,10 +123,7 @@ const Utils = {
       question: this.normalizeText(quiz.question),
       answer: this.normalizeText(quiz.answer),
       timer_sec: Number(quiz.timer_sec) || 15,
-      options: (Array.isArray(quiz.options) ? quiz.options : []).map(opt => ({
-        text: this.normalizeText(opt?.text ?? opt),
-        is_correct: opt?.is_correct === true,
-      })),
+      options,
     };
 
     normalized.explanation.string = normalized.explanation.string
@@ -117,7 +132,6 @@ const Utils = {
     return normalized;
   }
 };
-
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
@@ -458,12 +472,12 @@ ${quiz.question}
 
 규칙:
 1. 4개 보기 중 가장 정확한 정답 1개만 고르시오.
-2. 선택한 보기의 텍스트를 chosen_answer 필드에 적되, 보기 번호(1., 2., 3., 4.)는 완전히 제외하고 pure 보기 텍스트만 적으시오.
+2. 선택한 보기의 번호(1, 2, 3, 4 중 하나)를 숫자 정수로 chosen_number 필드에 적으시오.
 3. 오직 순수 JSON만 출력하시오.
 
 출력 형식:
 {
-  "chosen_answer": "[선택한 보기의 본문 텍스트]",
+  "chosen_number": 1,
   "reason": "[풀이 이유]"
 }`,
 
@@ -570,28 +584,25 @@ const QuizService = {
   },
 
   // 2단계: 블라인드 솔버 검증 (번호 Prefix 정규화 적용)
+  // 2단계: 블라인드 솔버 검증 (번호 선택 방식)
   async validateBlindSolver(quiz) {
     try {
       const prompt = PROMPTS.blindSolve(quiz);
       const res = await this.requestMistral(prompt, "high");
 
-      if (!res || !res.chosen_answer) {
-        return { valid: false, reason: "블라인드 솔버 응답 파싱 실패" };
+      const chosenNumber = Number(res?.chosen_number);
+      if (!chosenNumber || chosenNumber < 1 || chosenNumber > 4) {
+        return { valid: false, reason: "블라인드 솔버 응답 파싱 실패 (유효하지 않은 보기 번호)" };
       }
 
-      const rawChoice = Utils.normalizeText(res.chosen_answer);
-      const rawExpected = Utils.normalizeText(quiz.answer);
+      const selectedOption = quiz.options[chosenNumber - 1];
+      const isMatch = selectedOption?.is_correct === true;
 
-      // 보기 번호 Prefix("1. ", "4. " 등) 제거
-      const solverChoice = rawChoice.replace(/^\d+\.\s*/, "").trim();
-      const expectedAnswer = rawExpected.replace(/^\d+\.\s*/, "").trim();
-
-      const isMatch = solverChoice === expectedAnswer;
       return {
         valid: isMatch,
         reason: isMatch
-          ? "블라인드 솔버 풀이 성공 (정답 일치)"
-          : `블라인드 솔버 답안 불일치 (솔버 선택: "${solverChoice}" vs 출제 정답: "${expectedAnswer}")`,
+          ? `블라인드 솔버 풀이 성공 (${chosenNumber}번 정답 선택)`
+          : `블라인드 솔버 답안 불일치 (솔버 선택: ${chosenNumber}번 "${selectedOption?.text}" vs 출제 정답: "${quiz.answer}")`,
       };
     } catch (err) {
       console.error("블라인드 솔버 실행 오류:", err.message);
