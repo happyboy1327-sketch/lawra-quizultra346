@@ -458,8 +458,11 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "timer_sec": 15
 }`,
 
-  blindSolve: (quiz) => `
-당신은 대한민국 법률 시험 수험생입니다. 법령 원문이나 정답, 해설 없이 아래의 [질문]과 [보기]만 보고 정답을 고르세요.
+  blindSolve: (quiz, articleContext) => `
+당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요.
+
+[참조 법령]
+${articleContext}
 
 [질문]
 ${quiz.question}
@@ -586,9 +589,11 @@ const QuizService = {
   },
 
   // 2단계: 블라인드 솔버 검증
-  async validateBlindSolver(quiz) {
+  async validateBlindSolver(quiz, article) {
     try {
-      const prompt = PROMPTS.blindSolve(quiz);
+      // 수정된 부분: 원문을 추출하여 프롬프트에 전달
+      const articleContext = String(article?.content || "").trim();
+      const prompt = PROMPTS.blindSolve(quiz, articleContext);
       const res = await this.requestMistral(prompt, "high");
 
       const chosenNumber = Number(res?.chosen_number);
@@ -648,7 +653,7 @@ const QuizService = {
     }
     console.log("  └ [1단계 통과] 필수 필드 검증 성공");
 
-    const step2 = await this.validateBlindSolver(quiz);
+    const step2 = await this.validateBlindSolver(quiz, article);
     if (!step2.valid) {
       console.warn(`  └ [2단계 실패] ${step2.reason}`);
       return { valid: false, step: 2, reason: step2.reason };
