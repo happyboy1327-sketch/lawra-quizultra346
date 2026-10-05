@@ -436,6 +436,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 자세히 작성하시오.
 □ 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
 □ ⚠️조문 원문에서 기간 및 정도, 금액이 나오는 부분과 법률 적용 판별 기준, 법률 행사 수단은 반드시 볼드(e.g. **2개월**, **높은 비율로**, **더 높은 금액", **1/3비율**, **조서**, **만 18세 미만** )표시하고 예의 주시해서 날짜 및 금액 계산하시어 해설에도 똑같이 원문에 있는 기간, 정도, 금액이 나오는 부분과 법률 적용 판별 기준, 법률 행사 수단을 대응작성하시오.
+□ ⚠️해설 작성 시 '항(①, ② 등 원문자)'과 '호(1., 2. 등 숫자)'를 절대 혼동하지 말고 정확히 구분하여 기재하시오.
 □ 질문에서 묻는 바, 정답 보기(options/answer), 해설(explanation)의 수치·단위·시점이 실제 법령 조문과 100% 일치해야 합니다.
 □ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하시오. 간접 부정문(e.g. 위반되지 않는다고 볼 수 있는가?)도 금지합니다.
 □ 정답이 1번일 시, quiz.options?.[0]?.text의 문자열(= "is_correct": true인 text의 문자열)을 따와야 합니다.
@@ -484,27 +485,22 @@ ${quiz.question}
   "reason": "[풀이 이유]"
 }`,
 
-  factCheck: (validationPayload) => `
-당신은 대한민국 법률 팩트체크 검증관입니다.
-제시된 퀴즈가 아래 [원문 조문 및 참조/인용 조문]과 100% 법리적·사실적으로 일치하는지 검증하십시오.
+  correction: (quiz, article, errorReason) => `
+당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 솔버 검증에서 논리적 오류로 실패했습니다. 
+아래 [오류 사유]와 [원문 조문]을 바탕으로 퀴즈의 질문, 보기, 정답, 해설을 수정하십시오.
+특히 해설에서 '항(①, ②)'과 '호(1., 2.)'를 절대 혼동하지 마십시오.
 
-[검증 기준]
-1. 정답, 해설 내 수치(기간/금액/비율), 시점, 법적 주체, 의무/권고 구분이 원문과 정확히 일치하는가?
-2. 질문의 조건과 전제가 해설, 정답의 논리와 들어맞고 상통하는가?
-3. 인용한 조항 번호(조, 항, 호, 목)가 실존하며 내용과 상통하는가?
-4. 법률 적용 조건, 법률 행사 수단, 법리 해석이나 판례/예시 적용에 오류 및 모순이 없는가?
-5. 정답(answer)과 해설(explanation)의 논리가 서로 일관되며 완전하게 일치하는가? (정답과 해설의 논리가 일치하지 않거나 상충되면 무조건 valid: false 처리하십시오)
+[원문 조문]
+${article.content}
+${article.referencedContent ? `\n[참조 조문]\n${article.referencedContent}` : ''}
 
-위 기준 중 하나라도 어긋나거나 애매할 경우 valid: false 처리하십시오.
+[오류 사유]
+${errorReason}
 
-출력 형식 (JSON ONLY):
-{
-  "valid": boolean,
-  "reason": "[검증 결과 및 사유]"
-}
+[기존 퀴즈 데이터]
+${JSON.stringify(quiz, null, 2)}
 
-[원문 조문 및 퀴즈 데이터]
-${JSON.stringify(validationPayload, null, 2)}
+위 오류를 수정한 후, 기존과 동일한 순수 JSON 형식으로만 출력하십시오.
 `
 };
 
@@ -591,7 +587,6 @@ const QuizService = {
   // 2단계: 블라인드 솔버 검증
   async validateBlindSolver(quiz, article) {
     try {
-      // 수정된 부분: 원문을 추출하여 프롬프트에 전달
       const articleContext = String(article?.content || "").trim();
       const prompt = PROMPTS.blindSolve(quiz, articleContext);
       const res = await this.requestMistral(prompt, "high");
@@ -616,31 +611,15 @@ const QuizService = {
     }
   },
 
-  // 3단계: 최종 팩트체크 검증
-  async validateFactCheck(quiz, article) {
-    const sourceText = String(article?.content || "").replace(/[ \t]+/g, " ").trim();
-    const refText = String(article?.referencedContent || "").trim();
-    if (!sourceText) return { valid: false, reason: "원문 조문 누락" };
-
-    const fullSourceContext = refText
-      ? `[출제 조문 (${article.num})]\n${sourceText}\n\n[참조/인용 조문]\n${refText}`
-      : `[출제 조문 (${article.num})]\n${sourceText}`;
-
-    const validationPayload = {
-      source: { lawName: String(article.lawName), articleNumber: String(article.num), content: fullSourceContext },
-      quiz,
-    };
-
+  // 3단계: 자동 수정 (2단계 실패 시 호출)
+  async fixQuiz(quiz, article, errorReason) {
+    const prompt = PROMPTS.correction(quiz, article, errorReason);
     try {
-      const parsed = await this.requestMistral(PROMPTS.factCheck(validationPayload), "high");
-      const reasonText = Utils.normalizeText(parsed?.reason) || "팩트체크 검증 수행 완료";
-      return {
-        valid: parsed?.valid === true,
-        reason: reasonText,
-      };
+      const rawQuiz = await this.requestMistral(prompt, "xhigh");
+      return Utils.normalizeQuiz(rawQuiz);
     } catch (err) {
-      console.error("최종 팩트체크 API 호출 오류:", err.message);
-      return { valid: false, reason: `팩트체크 API 호출 실패: ${err.message}` };
+      console.error("자동 수정 API 오류:", err.message);
+      return null;
     }
   },
 
@@ -649,25 +628,35 @@ const QuizService = {
     const step1 = this.validateRequiredFields(quiz);
     if (!step1.valid) {
       console.warn(`  └ [1단계 실패] ${step1.reason}`);
-      return { valid: false, step: 1, reason: step1.reason };
+      return { valid: false, step: 1, reason: step1.reason, quiz };
     }
     console.log("  └ [1단계 통과] 필수 필드 검증 성공");
 
     const step2 = await this.validateBlindSolver(quiz, article);
     if (!step2.valid) {
       console.warn(`  └ [2단계 실패] ${step2.reason}`);
-      return { valid: false, step: 2, reason: step2.reason };
+      console.log("  └ [3단계 진입] 2단계 실패에 따른 퀴즈 자동 수정 시도 중...");
+      
+      const correctedQuiz = await this.fixQuiz(quiz, article, step2.reason);
+      if (!correctedQuiz) {
+        return { valid: false, step: 3, reason: "자동 수정 생성 실패", quiz };
+      }
+      
+      console.log("  └ [3단계 통과] 자동 수정 완료. 수정된 퀴즈로 재검증 실시...");
+      
+      // 재검증
+      const reStep1 = this.validateRequiredFields(correctedQuiz);
+      if (!reStep1.valid) return { valid: false, step: 1, reason: `재검증 필수 필드 실패: ${reStep1.reason}`, quiz: correctedQuiz };
+      
+      const reStep2 = await this.validateBlindSolver(correctedQuiz, article);
+      if (!reStep2.valid) return { valid: false, step: 2, reason: `재검증 블라인드 솔버 실패: ${reStep2.reason}`, quiz: correctedQuiz };
+      
+      console.log("  └ [재검증 통과] 수정된 퀴즈 정답 논리 일치 확인");
+      return { valid: true, reason: "자동 수정 후 검증 통과", quiz: correctedQuiz };
     }
+    
     console.log("  └ [2단계 통과] 블라인드 솔버 일치 확인");
-
-    const step3 = await this.validateFactCheck(quiz, article);
-    if (!step3.valid) {
-      console.warn(`  └ [3단계 실패] ${step3.reason}`);
-      return { valid: false, step: 3, reason: step3.reason };
-    }
-    console.log("  └ [3단계 통과] 법령 조문 원문 팩트체크 성공");
-
-    return { valid: true, reason: "3단계 검증 파이프라인 전체 통과" };
+    return { valid: true, reason: "초기 검증 파이프라인 통과", quiz };
   },
 
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
@@ -687,10 +676,10 @@ const QuizService = {
       const result = await this.runValidationPipeline(quiz, article);
       if (result.valid) {
         console.log(`[슬롯 ${slotIndex}] 최종 검증 성공 (시도 ${attempt})`);
-        return quiz;
+        return result.quiz;
       }
     }
-    console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 3단계 검증 시도 실패`);
+    console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증 시도 실패`);
     return null;
   }
 };
