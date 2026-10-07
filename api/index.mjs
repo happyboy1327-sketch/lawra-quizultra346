@@ -690,7 +690,7 @@ const QuizService = {
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
     for (let attempt = 1; attempt <= maxTries; attempt++) {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
-const article = await LawService.fetchRandomArticle(law.lawId);
+const article = await LawService.fetchRandomArticle(law);
 if (!article) continue;
 
 const articles = await LawService.fetchLawArticles(law.lawId);
