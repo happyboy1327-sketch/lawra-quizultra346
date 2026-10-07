@@ -91,6 +91,16 @@ const Utils = {
     return String(value);
   },
 
+  // 해설 내 보기 번호 참조("2번", "②번", "보기 3")를 셔플된 순서에 맞게 치환
+  remapOptionRefs: (text, noMap) => {
+    const CIRCLED = ["①", "②", "③", "④"];
+    const map = (n) => noMap.get(n) ?? n;
+    return text
+      .replace(/(?<!\d)([1-4])(\s*번)/g, (_, n, tail) => `${map(Number(n))}${tail}`)
+      .replace(/([①②③④])(\s*번)/g, (_, c, tail) => `${CIRCLED[map(CIRCLED.indexOf(c) + 1) - 1]}${tail}`)
+      .replace(/((?:보기|선택지)\s*)([1-4])(?!\d|\s*번)/g, (_, head, n) => `${head}${map(Number(n))}`);
+  },
+
   normalizeQuiz: function (quiz) {
     if (!quiz || typeof quiz !== "object") return null;
 
@@ -111,7 +121,10 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
-    const options = this.shuffle(rawOptions);
+    // 셔플 + 원래 번호 → 새 번호 매핑 (해설 속 "N번" 참조 보정용)
+    const order = this.shuffle(rawOptions.map((_, i) => i)); // order[새 인덱스] = 원래 인덱스
+    const options = order.map(i => rawOptions[i]);
+    const noMap = new Map(order.map((oldIdx, newIdx) => [oldIdx + 1, newIdx + 1]));
 
     const normalized = {
       ...quiz,
@@ -124,8 +137,8 @@ const Utils = {
       options,
     };
 
-    normalized.explanation.string = normalized.explanation.string
-      .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
+    normalized.explanation.string = this.remapOptionRefs(normalized.explanation.string, noMap)
+       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
 
     return normalized;
   }
