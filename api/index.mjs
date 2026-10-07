@@ -612,7 +612,7 @@ const QuizService = {
   },
 
   // 2단계: 블라인드 솔버 검증
-  async validateBlindSolver(quiz, article) {
+  async validateBlindSolver(quiz, article, refContent) {
     try {
       const articleContext = String(article?.content || "").trim();
       const refContent = String(article.referencedContent || "").trim();
@@ -700,6 +700,7 @@ const QuizService = {
         console.warn(`[슬롯 ${slotIndex}] 퀴즈 생성 실패`);
         continue;
       }
+     const refContent = articles.find(a => a.num === article.num)?.referencedContent ?? "";
 
       const result = await this.runValidationPipeline(quiz, article, refContent);
       if (result.valid) {
