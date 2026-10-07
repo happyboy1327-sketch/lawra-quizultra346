@@ -652,7 +652,7 @@ const QuizService = {
   },
 
   // 3단계 통합 검증 실행기
-  async runValidationPipeline(quiz, article) {
+  async runValidationPipeline(quiz, article, refContent) {
     const step1 = this.validateRequiredFields(quiz);
     if (!step1.valid) {
       console.warn(`  └ [1단계 실패] ${step1.reason}`);
@@ -701,7 +701,7 @@ const QuizService = {
         continue;
       }
 
-      const result = await this.runValidationPipeline(quiz, article);
+      const result = await this.runValidationPipeline(quiz, article, refContent);
       if (result.valid) {
         console.log(`[슬롯 ${slotIndex}] 최종 검증 성공 (시도 ${attempt})`);
         return result.quiz;
