@@ -440,7 +440,18 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 질문에서 묻는 바, 정답 보기(options/answer), 해설(explanation)의 수치·단위·시점이 실제 법령 조문과 100% 일치해야 합니다. 제발 해설에 날짜 계산 제대로 해주세요.[BAD EXAMPLE : 해당 문제에서 A씨는 2024년 1월 15일에 갱신요구를 하였고, 임대차기간은 2023년 11월 1일부터 2024년 10월 31일까지였으므로 갱신요구권 행사 시점은 제6조 제1항 전단(6개월 전부터 2개월 전까지)의 기간에 해당한다.] 
 □ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하시오. 간접 부정문(e.g. 위반되지 않는다고 볼 수 있는가?)도 금지합니다.
 □ 정답이 1번일 시, quiz.options?.[0]?.text의 문자열(= "is_correct": true인 text의 문자열)을 따와야 합니다.
-□ 해설 작성 시 날짜 계산을 똑바로 하시오. 잘 안되어 있고 올바르지 않으면 해설의 Boolean에 false 처리하시오.
+□ 해설 작성 시 날짜 계산을 똑바로 하시오. 잘 안되어 있고 올바르지 않으면 해설의 Boolean에 false 처리하시오.⚠️ 날짜, 기간, 금액, 비율, 연령 등 계산이 필요한 경우
+반드시 계산 근거를 별도 필드에 작성하시오.
+
+예시
+
+"calculations": [
+  {
+    "expression": "2026-10-15 - 6개월",
+    "result": "2026년 4월 15일"
+  }
+]
+
 □ 반드시 순수 JSON만 출력하세요.
 
 출력 형식:
@@ -449,6 +460,12 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "category": "${article.lawName}",
   "concept_summary": "[문제 푸는 목표 및 의도]",
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설]", "Boolean": true},
+  "calculations": [
+   {
+    "expression":"",
+    "result": ""
+   }
+  ], 
   "question": "[질문 내용]",
   "options": [
     {"text": "[정답 내용]", "is_correct": true},
@@ -592,6 +609,38 @@ const QuizService = {
     return { valid: true };
   },
 
+  validateCalculations(quiz) {
+
+  const calcs = quiz?.calculations || [];
+
+  for (const calc of calcs) {
+
+    const expected =
+      CalculationEngine.calculate(
+        calc.expression
+      );
+
+    if (!expected) {
+      return {
+        valid: false,
+        reason: `계산식 파싱 실패: ${calc.expression}`
+      };
+    }
+
+    if (expected !== calc.result) {
+      return {
+        valid: false,
+        reason:
+          `계산 오류: ${calc.expression}
+          기대값=${expected}
+          실제값=${calc.result}`
+      };
+    }
+  }
+
+  return { valid: true };
+  }, 
+
   // 2단계: 블라인드 솔버 검증
   async validateBlindSolver(quiz, article) {
     try {
@@ -639,6 +688,17 @@ const QuizService = {
       return { valid: false, step: 1, reason: step1.reason, quiz };
     }
     console.log("  └ [1단계 통과] 필수 필드 검증 성공");
+    
+    const calcStep = this.validateCalculations(quiz);
+
+if (!calcStep.valid) {
+  return {
+    valid:false,
+    step:2,
+    reason:calcStep.reason,
+    quiz
+  };
+}
 
     const step2 = await this.validateBlindSolver(quiz, article);
     if (!step2.valid) {
