@@ -690,10 +690,10 @@ const QuizService = {
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
     for (let attempt = 1; attempt <= maxTries; attempt++) {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
-const article = await LawService.fetchRandomArticle(law);
+const article = await LawService.fetchRandomArticle(lawId);
 if (!article) continue;
 
-const articles = await LawService.fetchLawArticles(law);
+const articles = await LawService.fetchLawArticles(lawId);
 const refContent = articles.find(a => a.num === article.num)?.referencedContent ?? "";
       console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
