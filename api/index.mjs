@@ -456,6 +456,8 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 해설 작성 시 날짜 계산을 똑바로 하시오. 잘 안되어 있고 올바르지 않으면 해설의 Boolean에 false 처리하시오.
 □ 해설 작성시 문제에 언급되지 아니한 인물(예: 문제에 언급되지 않은 B씨가 있을 경우)이 있다면 해설의 Boolean에 false 처리하시오.
 □ 해설에서 보기를 번호로 가리킬 때는 반드시 options 배열 순서 기준의 "N번" 형식(예: 1번, 2번)으로만 쓰시오.
+□ 소비자보호법이란 말은 없습니다. 대체 어디서본건지 ㅅㅂ. 소비자보호법같이 실존하지 않는 법령명이 정답 및 해설에 쓰여있으면 해설의 Boolean에 false 처리하시오.
+□ 해설에 잘못되고 무관한 조항번호와 조항내용이 끼어있으면 해설의 Boolean에 false 처리하시오.
 □ 반드시 순수 JSON만 출력하세요.
 
 출력 형식:
@@ -475,11 +477,13 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "timer_sec": 15
 }`,
 
-  blindSolve: (quiz, articleContext) => `
-당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요. 날짜 계산이 있다면 그것도 정확하게 확인하여 푸시오.
+  blindSolve: (quiz, articleContext, refContent) => `
+당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령] 및 [참조 및 인용 조문 내용]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요. 날짜 계산이 있다면 그것도 정확하게 확인하여 푸시오.
 
 [참조 법령]
 ${articleContext}
+
+${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 
 [질문]
 ${quiz.question}
@@ -611,7 +615,8 @@ const QuizService = {
   async validateBlindSolver(quiz, article) {
     try {
       const articleContext = String(article?.content || "").trim();
-      const prompt = PROMPTS.blindSolve(quiz, articleContext);
+      const refContent = String(article.referencedContent || "").trim();
+      const prompt = PROMPTS.blindSolve(quiz, articleContext, refContent);
       const res = await this.requestMistral(prompt, "high");
 
       const chosenNumber = Number(res?.chosen_number);
@@ -655,7 +660,7 @@ const QuizService = {
     }
     console.log("  └ [1단계 통과] 필수 필드 검증 성공");
 
-    const step2 = await this.validateBlindSolver(quiz, article);
+    const step2 = await this.validateBlindSolver(quiz, article, refContent);
     if (!step2.valid) {
       console.warn(`  └ [2단계 실패] ${step2.reason}`);
       console.log("  └ [3단계 진입] 2단계 실패에 따른 퀴즈 자동 수정 시도 중...");
