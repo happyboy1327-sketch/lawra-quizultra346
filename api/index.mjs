@@ -373,7 +373,7 @@ const LawService = {
           const visited = new Set();
           const collected = new Map();
 
-          const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 2) => {
+          const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 3) => {
             if (!articleNum) return;
 
             const key = `${currentLawId}_${articleNum}`;
