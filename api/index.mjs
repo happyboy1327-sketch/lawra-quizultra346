@@ -447,7 +447,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
-  "concept_summary": "[문제 푸는 목표 및 의도]",
+  "concept_summary_andcal": "[문제 푸는 목표 및 의도, 문제, 해설 내 올바른 날짜 계산식 모두 (예:2016-05-22의 3개월 전은 2016년 2월 22일)]",
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설]", "Boolean": true},
   "question": "[질문 내용]",
   "options": [
@@ -461,7 +461,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 }`,
 
   blindSolve: (quiz, articleContext) => `
-당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요.
+당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요. 날짜 계산이 있다면 그것도 정확하게 확인하여 푸시오.
 
 [참조 법령]
 ${articleContext}
