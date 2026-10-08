@@ -121,9 +121,18 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
+    // answer와 공백 제외 완전 일치하는 보기가 있을 때만 is_correct 플래그 보정
+    const cleanStr = (s) => String(s || "").replace(/\s+/g, "").trim();
+    const targetAnswer = cleanStr(quiz.answer);
+    const matchedIndex = rawOptions.findIndex(opt => cleanStr(opt.text) === targetAnswer);
+
+    const fixedRawOptions = matchedIndex !== -1
+      ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
+      : rawOptions;
+
     // 셔플 + 원래 번호 → 새 번호 매핑 (해설 속 "N번" 참조 보정용)
-    const order = this.shuffle(rawOptions.map((_, i) => i)); // order[새 인덱스] = 원래 인덱스
-    const options = order.map(i => rawOptions[i]);
+    const order = this.shuffle(fixedRawOptions.map((_, i) => i)); // order[새 인덱스] = 원래 인덱스
+    const options = order.map(i => fixedRawOptions[i]);
     const noMap = new Map(order.map((oldIdx, newIdx) => [oldIdx + 1, newIdx + 1]));
 
     const normalized = {
