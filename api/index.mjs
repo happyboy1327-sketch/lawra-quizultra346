@@ -253,10 +253,12 @@ const LawParser = {
   formatItemLine(no, content, indent = "") {
     const rawNo = String(no || "").trim();
     let rawContent = String(content || "").trim();
-    if (!rawContent && !rawNo) return "";
+    
+    if (!rawContent && (!rawNo || rawNo === "0")) return "";
     if (!rawContent) return `${indent}${rawNo}`;
 
-    if (rawNo) {
+    // 항번호가 존재하고 "0"이 아닌 경우에만 항/호 번호 접두사 적용
+    if (rawNo && rawNo !== "0") {
       const coreNo = rawNo.replace(/(호|목|항)$/, "").trim();
       const escapedCore = coreNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pattern = new RegExp(`^(${escapedCore}|${rawNo}|\\d+\\.|[가-하]\\.)\\s*`);
@@ -268,6 +270,8 @@ const LawParser = {
         return `${indent}${prefix} ${rawContent}`;
       }
     }
+    
+    // 단일 조항(항번호 없음/0)인 경우 번호 없이 내용만 반환
     return `${indent}${rawContent}`;
   },
 
@@ -462,6 +466,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 인과관계, 사실관계가 올바른지 확인하고, 문제 내시오.
 □ ⚠️조문 원문에서 기간 및 정도, 금액이 나오는 부분과 법률 적용 판별 기준, 법률 행사 수단은 반드시 볼드(e.g. **2개월**, **높은 비율로**, **더 높은 금액", **1/3비율**, **조서**, **만 18세 미만** )표시하고 예의 주시해서 날짜 및 금액 계산하시어 해설에도 똑같이 원문에 있는 기간, 정도, 금액이 나오는 부분과 법률 적용 판별 기준, 법률 행사 수단을 대응작성하시오.
 □ ⚠️해설 작성 시 '항(①, ② 등 원문자)'과 '호(1., 2. 등 숫자)'를 절대 혼동하지 말고 정확히 구분하여 기재하시오.
+□ ⚠️원문 조문에 항번호가 없거나 단일 조항인 경우, 임의로 '제1항'이나 원문자 '①' 등을 생성하거나 문제·해설에서 존재하지 않는 '제1항'으로 인용하지 마시오. 단일 조항은 조문명(A법 제N조의M 까지)만 언급해야 합니다.
 □ 질문에서 묻는 바, 정답 보기(options/answer), 해설(explanation)의 수치·단위·시점이 실제 법령 조문과 100% 일치해야 합니다. 제발 해설에 날짜 계산 제대로 해주세요.[BAD EXAMPLE : 해당 문제에서 A씨는 2024년 1월 15일에 갱신요구를 하였고, 임대차기간은 2023년 11월 1일부터 2024년 10월 31일까지였으므로 갱신요구권 행사 시점은 제6조 제1항 전단(6개월 전부터 2개월 전까지)의 기간에 해당한다.] 
 □ 반드시 긍정문으로 묻는 질문만을 생성하고, 질문은 구체적으로 작성하시오. 간접 부정문(e.g. 위반되지 않는다고 볼 수 있는가?)도 금지합니다.
 □ 정답이 1번일 시, quiz.options?.[0]?.text의 문자열(= "is_correct": true인 text의 문자열)을 따와야 합니다.
