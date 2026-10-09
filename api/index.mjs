@@ -30,6 +30,7 @@ const VALID_LAW_IDS = [
   { lawId: "001638", lawName: "도로교통법" },
   { lawId: "001248", lawName: "주택임대차보호법" },
   { lawId: "001206", lawName: "가사소송법" },
+  { lawId: "013704", lawName: "금융소비자 보호에 관한 법률" } 
 ];
 
 const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
