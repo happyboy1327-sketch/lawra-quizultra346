@@ -68,15 +68,6 @@ app.use((req, res, next) => {
 const Utils = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 
-  shuffle: (array) => {
-    const arr = [...array];
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  },
-
   isRateLimitError: (error) => {
     const status = error?.statusCode || error?.status || error?.response?.status;
     return status === 429 || /429|rate.?limit/i.test(error?.message || "");
@@ -91,16 +82,6 @@ const Utils = {
       return targetKey ? this.normalizeText(value[targetKey]) : JSON.stringify(value);
     }
     return String(value);
-  },
-
-  // 해설 내 보기 번호 참조("2번", "②번", "보기 3")를 셔플된 순서에 맞게 치환
-  remapOptionRefs: (text, noMap) => {
-    const CIRCLED = ["①", "②", "③", "④"];
-    const map = (n) => noMap.get(n) ?? n;
-    return text
-      .replace(/(?<!\d)([1-4])(\s*번)/g, (_, n, tail) => `${map(Number(n))}${tail}`)
-      .replace(/([①②③④])(\s*번)/g, (_, c, tail) => `${CIRCLED[map(CIRCLED.indexOf(c) + 1) - 1]}${tail}`)
-      .replace(/((?:보기|선택지)\s*)([1-4])(?!\d|\s*번|\s*번의)/g, (_, head, n) => `${head}${map(Number(n))}`);
   },
 
   normalizeQuiz: function (quiz) {
@@ -148,6 +129,7 @@ const Utils = {
 
     return normalized;
   }
+};
 
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
