@@ -128,14 +128,9 @@ const Utils = {
     const targetAnswer = cleanStr(quiz.answer);
     const matchedIndex = rawOptions.findIndex(opt => cleanStr(opt.text) === targetAnswer);
 
-    const fixedRawOptions = matchedIndex !== -1
+    const options = matchedIndex !== -1
       ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
       : rawOptions;
-
-    // 셔플 + 원래 번호 → 새 번호 매핑 (해설 속 "N번" 참조 보정용)
-    const order = this.shuffle(fixedRawOptions.map((_, i) => i)); // order[새 인덱스] = 원래 인덱스
-    const options = order.map(i => fixedRawOptions[i]);
-    const noMap = new Map(order.map((oldIdx, newIdx) => [oldIdx + 1, newIdx + 1]));
 
     const normalized = {
       ...quiz,
@@ -145,15 +140,14 @@ const Utils = {
       question: this.normalizeText(quiz.question),
       answer: this.normalizeText(quiz.answer),
       timer_sec: Number(quiz.timer_sec) || 15,
-      options,
+      options, // 셔플 제거하여 LLM이 생성한 순서와 해설 번호가 100% 일치하도록 함
     };
 
-    normalized.explanation.string = this.remapOptionRefs(normalized.explanation.string, noMap)
+    normalized.explanation.string = normalized.explanation.string
        .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
 
     return normalized;
   }
-};
 
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
@@ -488,10 +482,11 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
    - 해설에서 보기를 가리킬 때는 options 배열 순서 기준의 "**N번**"(예: 1번, 2번) 형식만 사용하세요.
 
 5. **해설 작성 및 검증 규칙 (Boolean: false 처리 기준)**
-   - ***문제에 언급되지 않은 제3자(예: 문제에 없던 B씨,B상회 등)가 해설에 어느 곳이라도 갑자기 등장하면 Boolean을 false 처리하세요.***
+   - ***문제에 언급되지 않은 제3자(예: 문제에 없던 B씨, B상회 등)가 해설에 어느 곳이라도 갑자기 등장하면 Boolean을 false 처리하세요.***
    - 날짜 계산이 틀리거나 시점(집행 시작/종료, 변제 시작 등) 서술 간 앞뒤 모순이 생기면 Boolean을 false 처리하세요.
    - 문제에 명시하지 않은 날짜/조건을 전제로 해설에서 언급되었다고 거짓말하면 Boolean을 false 처리하세요.
    - 조항 번호와 조항 내용이 불일치하거나 무관한 조항이 끼어있으면 Boolean을 false 처리하세요.
+   - **오답 해설에서 실제 보기나 문제에 등장하지도 않은 엉뚱한 조항(예: 제141조 제2항 등)을 지어내어 언급하면 즉시 Boolean을 false 처리하세요.
    - 공탁절차 등 복잡하거나 불확실한 지식에 대해 할루시네이션하지 마시고, 모르는 내용은 해설에서 과감히 제외하세요.
    - 수치 및 계산 단어에 주의하세요. (예: '과반수 이상'이라는 모호한 표현 지양, '과반수'는 초과를 의미하므로 정확한 수학적 기준 적용)
 
@@ -550,6 +545,7 @@ ${quiz.question}
 당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 솔버 검증에서 논리적 오류로 실패했습니다. 
 아래 [오류 사유]와 [원문 조문]을 바탕으로 퀴즈의 질문, 보기, 정답, 해설을 수정하십시오.
 특히 해설에서 '항(①, ②)'과 '호(1., 2.)'를 절대 혼동하지 마십시오.
+**절대로 해설에서 실제 보기나 문제에 없는 엉뚱한 조항(예: 제141조 제2항 등)을 지어내어 언급하지 마십시오.**
 
 [원문 조문]
 ${article.content}
@@ -791,7 +787,7 @@ app.get("/api/lawquizzes/latest", async (req, res) => {
 
 app.post("/api/lawquizzes/new", async (req, res) => {
   try {
-    console.log("=== 절충안: 병렬 그룹 퀴즈 세트 생성 및 3단계 검증 시작 ===");
+    console.log("== 청크 병렬 그룹 퀴즈 세트 생성 및 3단계 검증 시작 ===");
     const slots = [1, 2, 3];
     const newQuizzes = [];
     
