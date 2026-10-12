@@ -579,11 +579,24 @@ ${JSON.stringify(quiz, null, 2)}
 // ============================================================================
 const QuizService = {
   lastCallAt: 0,
+  queueTail: Promise.resolve(),
   
   async throttle() {
-    const wait = this.lastCallAt + MISTRAL_MIN_INTERVAL_MS - Date.now();
-    if (wait > 0) await Utils.sleep(wait);
+    // 비동기 큐 뮤텍스로 race condition 방지 및 정확한 간격 보장
+    let release;
+    const nextInLine = new Promise((resolve) => { release = resolve; });
+    const prevTail = this.queueTail;
+    this.queueTail = nextInLine;
+
+    await prevTail;
+
+    const now = Date.now();
+    const wait = this.lastCallAt + MISTRAL_MIN_INTERVAL_MS - now;
+    if (wait > 0) {
+      await Utils.sleep(wait);
+    }
     this.lastCallAt = Date.now();
+    release();
   },
 
   async requestMistral(prompt, reasoningEffort) {
