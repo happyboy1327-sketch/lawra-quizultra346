@@ -730,7 +730,7 @@ const QuizService = {
     return { valid: true, reason: "초기 검증 파이프라인 통과", quiz };
   },
 
-  async generateValidQuizSlot(slotIndex, maxTries = 3) {
+  async generateValidQuizSlot(slotIndex, maxTries = 2) {
     for (let attempt = 1; attempt <= maxTries; attempt++) {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
 const article = await LawService.fetchRandomArticle(law);
@@ -776,14 +776,26 @@ app.get("/api/lawquizzes/latest", async (req, res) => {
 
 app.post("/api/lawquizzes/new", async (req, res) => {
   try {
-    console.log("=== 병렬 퀴즈 세트 생성 및 3단계 검증 시작 ===");
-    const quizPromises = [1, 2, 3].map((index) => QuizService.generateValidQuizSlot(index));
-    const results = await Promise.all(quizPromises);
-    const newQuizzes = results.filter(Boolean);
+    console.log("=== 절충안: 병렬 그룹 퀴즈 세트 생성 및 3단계 검증 시작 ===");
+    const slots = [1, 2, 3];
+    const newQuizzes = [];
+    
+    // 2개씩 묶어서 병렬 처리 (순차의 느린 속도 + 전체 동시 병렬의 API 부하 및 타임아웃 동시 해결)
+    for (let i = 0; i < slots.length; i += 2) {
+      const chunk = slots.slice(i, i + 2);
+      const chunkPromises = chunk.map((index) => QuizService.generateValidQuizSlot(index));
+      const results = await Promise.all(chunkPromises);
+      newQuizzes.push(...results.filter(Boolean));
+    }
+    
     console.log(`=== 퀴즈 세트 생성 완료: ${newQuizzes.length}/3 ===`);
 
     if (newQuizzes.length === 0) {
-      return res.status(400).json({ error: "퀴즈 생성 실패", message: "퀴즈 생성 및 3단계 검증 시도가 모두 실패했습니다.", serverError: true });
+      return res.status(500).json({ 
+        error: "퀴즈 생성 실패", 
+        message: "퀴즈 생성 및 검증 시도가 모두 실패했습니다.", 
+        serverError: true 
+      });
     }
 
     const quizSetId = String(Date.now());
@@ -793,7 +805,11 @@ app.post("/api/lawquizzes/new", async (req, res) => {
     return res.json(newQuizzes);
   } catch (err) {
     console.error("퀴즈 세트 생성 중 오류 발생:", err);
-    return res.status(500).json({ error: "퀴즈 생성 오류", message: err?.message || "알 수 없는 오류", serverError: true });
+    return res.status(500).json({ 
+      error: "퀴즈 생성 오류", 
+      message: err?.message || "알 수 없는 오류", 
+      serverError: true 
+    });
   }
 });
 
