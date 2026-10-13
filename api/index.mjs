@@ -415,7 +415,7 @@ const LawService = {
 
             for (const ext of external) {
               const targetLawId = await getLawIdByName(ext.lawName);
-              console.log ('조문 참조 있음')
+              console.log(`[타법 참조] ${ext.lawName} ${ext.articleNum} -> ${targetLawId}`);
                 if (targetLawId && targetLawId !== currentLawId) {
                 await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
               }
