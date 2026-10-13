@@ -878,6 +878,13 @@ app.get("/api/debug-ext", async (req, res) => {
   res.json({ name, id, articleCount: map.size, artHead: art?.content?.slice(0, 150) ?? null });
 });
 
+app.get("/api/debug-collect", async (req, res) => {
+  const lawId = req.query.lawId || "001638";
+  const art = req.query.art || "제2조";
+  const ref = await LawService.collectReferences(lawId, { num: art, lawName: "" });
+  res.json({ art, length: ref.length, heads: ref.match(/^\[[^\]]+\]/gm) });
+});
+
 app.use(express.static(path.join(__dirname, "..")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
