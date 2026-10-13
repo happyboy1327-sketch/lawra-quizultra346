@@ -490,8 +490,8 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "options": [
     {"text": "[오답 내용]", "is_correct": false},
     {"text": "[정답 내용]", "is_correct": true},
-    {"text": "[오답 내용`]", "is_correct": false},
-    {"text": "[오답 내용``]", "is_correct": false}
+    {"text": "[오답내용]", "is_correct": false},
+    {"text": "[오답인 내용]", "is_correct": false}
   ],
   "answer": "[정답 내용]",
   "timer_sec": 15
