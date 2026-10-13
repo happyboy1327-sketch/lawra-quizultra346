@@ -874,6 +874,15 @@ app.get("/api/debug-search", async (req, res) => {
     res.json({ error: e.message, status: e.response?.status, data: String(e.response?.data).slice(0, 500) });
   }
 });
+
+app.get("/api/debug-ext", async (req, res) => {
+  const name = req.query.name || "자동차관리법";
+  const id = await getLawIdByName(name);
+  const map = id ? await getLawArticleMap(id) : new Map();
+  const art = map.get(req.query.art || "제3조");
+  res.json({ name, id, articleCount: map.size, artHead: art?.content?.slice(0, 150) ?? null });
+});
+
 app.use(express.static(path.join(__dirname, "..")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
