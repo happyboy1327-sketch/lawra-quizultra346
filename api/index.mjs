@@ -477,7 +477,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 6. 법령 원문에 기간이 전혀 명시되어 있지 않으면 절대로 날짜 등의 숫자를 문제나 해설에 넣지 마시오. 이 경우, calcul_check도 null로 비우시오.
 
 7. **출력 형식**
-   - 반드시 다른 부연 설명 없이 **순수 JSON** 형태만 출력하세요.
+   - 반드시 다른 부연 설명 없이 **순수 JSON** 형태만 출력하세요. 해설 내에선 오답 번호, 기호를 절대로 적지 마시오.
 
 출력 형식:
 {
@@ -488,10 +488,10 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설 및 오답 내 키워드와 관련된 조항 설명]", "Boolean": true},
   "question": "[질문 내용]",
   "options": [
-    {"text": "[오답 A]", "is_correct": false},
+    {"text": "[오답 내용]", "is_correct": false},
     {"text": "[정답 내용]", "is_correct": true},
-    {"text": "[오답 B]", "is_correct": false},
-    {"text": "[오답 C]", "is_correct": false}
+    {"text": "[오답 내용`]", "is_correct": false},
+    {"text": "[오답 내용``]", "is_correct": false}
   ],
   "answer": "[정답 내용]",
   "timer_sec": 15
@@ -553,7 +553,7 @@ ${JSON.stringify(quiz, null, 2)}
 8. 날짜는 맞게 계산해놓고 해설에 앞뒤 모순이 생기면 안된다고.
 9. 만약 질문 자체만 보고 계산 및 판단을 할 수 없는 경우, 문제의 질문에 조건을 괄호 안에 추가하시오.
 10. 질문이 언급되지 않은 인물이 해설 내에 어디라도 엉뚱히 있을 경우, 해당 내용을 제거하시오.
-11. 해설에서 보기를 가리킬 때 "1번", "①", "오답 1" 같은 번호 표현을 쓰지 말고, 보기 내용을 직접 요약언급하시오.
+11. 해설에서 보기를 가리킬 때 "1번", "①", "오답 1", "오답 가" 같은 번호 표현을 쓰지 말고, 보기 내용을 직접 요약언급하시오.
 
 `
 };
@@ -646,6 +646,10 @@ const QuizService = {
 
     if (correctOptions[0].text.trim() !== quiz.answer.trim()) {
       return { valid: false, reason: "answer 필드 값과 정답 보기(is_correct=true)의 텍스트가 일치하지 않음" };
+    }
+
+    if (/[1-4①-④]\s*번|보기\s*[1-4]|오답\s*[1-4A-C가-다]/.test(quiz.explanation.string)) {
+  return { valid: false, reason: "해설에 보기 번호 참조가 있음" };
     }
 
     return { valid: true };
