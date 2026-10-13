@@ -380,72 +380,68 @@ const LawParser = {
 const LawService = {
   async fetchLawArticles(lawId) {
     if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
-
     try {
       const articleMap = await getLawArticleMap(lawId);
-      if (!articleMap.size) return [];
-
-      const articlesWithRefs = await Promise.all(
-        Array.from(articleMap.values()).map(async (parsed) => {
-          const visited = new Set();
-          const collected = new Map();
-
-          const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 3) => {
-            if (!articleNum) return;
-
-            const key = `${currentLawId}_${articleNum}`;
-            if (visited.has(key)) return;
-            visited.add(key);
-
-            const currentMap = await getLawArticleMap(currentLawId);
-            const article = currentMap?.get(articleNum);
-
-            if (!article || article.isDeleted) return;
-            collected.set(key, article);
-
-            const { internal, external } = extractReferences(article.content);
-            const totalRefCount = internal.length + external.length;
-
-            const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
-            if (currentDepth >= effectiveMaxDepth) return;
-
-            for (const refNum of internal) {
-              await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
-            }
-
-            for (const ext of external) {
-              const targetLawId = await getLawIdByName(ext.lawName);
-              console.log(`[타법 참조] ${ext.lawName} ${ext.articleNum} -> ${targetLawId}`);
-                if (targetLawId && targetLawId !== currentLawId) {
-                await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
-              }
-            }
-          };
-
-          const selfKey = `${lawId}_${parsed.num}`;
-          await collectArticle(lawId, parsed.num);
-
-          const referencedContent = Array.from(collected.entries())
-            .filter(([k]) => k !== selfKey)
-            .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
-            .join("\n\n");
-
-          return { ...parsed, referencedContent };
-        })
-      );
-
-      return articlesWithRefs;
+      return Array.from(articleMap.values());
     } catch (err) {
       console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
       return [];
     }
   },
 
+  // 뽑힌 조문 1개에 대해서만 참조 조문 수집
+  async collectReferences(lawId, parsed) {
+    const visited = new Set();
+    const collected = new Map();
+
+    const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 3) => {
+      if (!articleNum) return;
+
+      const key = `${currentLawId}_${articleNum}`;
+      if (visited.has(key)) return;
+      visited.add(key);
+
+      const currentMap = await getLawArticleMap(currentLawId);
+      const article = currentMap?.get(articleNum);
+      if (!article || article.isDeleted) return;
+      collected.set(key, article);
+
+      const { internal, external } = extractReferences(article.content);
+      const totalRefCount = internal.length + external.length;
+
+      const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
+      if (currentDepth >= effectiveMaxDepth) return;
+
+      for (const refNum of internal) {
+        await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
+      }
+
+      for (const ext of external) {
+        const targetLawId = await getLawIdByName(ext.lawName);
+        console.log(`[타법 참조] ${ext.lawName} ${ext.articleNum} -> ${targetLawId}`);
+        if (targetLawId && targetLawId !== currentLawId) {
+          await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
+        }
+      }
+    };
+
+    const selfKey = `${lawId}_${parsed.num}`;
+    await collectArticle(lawId, parsed.num);
+
+    return Array.from(collected.entries())
+      .filter(([k]) => k !== selfKey)
+      .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
+      .join("\n\n");
+  },
+
   async fetchRandomArticle(law) {
     const articles = await this.fetchLawArticles(law.lawId);
     const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
     if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
-    return validArticles[Math.floor(Math.random() * validArticles.length)];
+
+    const picked = validArticles[Math.floor(Math.random() * validArticles.length)];
+    const referencedContent = await this.collectReferences(law.lawId, picked);
+    return { ...picked, referencedContent };
   }
 };
 
@@ -762,8 +758,7 @@ const QuizService = {
 const article = await LawService.fetchRandomArticle(law);
 if (!article) continue;
 
-const articles = await LawService.fetchLawArticles(law.lawId);
-const refContent = articles.find(a => a.num === article.num)?.referencedContent ?? "";
+const refContent = article.referencedContent ?? "";
       console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
