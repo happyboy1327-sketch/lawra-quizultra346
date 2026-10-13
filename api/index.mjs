@@ -848,6 +848,16 @@ app.get("/api/debug-ref", async (req, res) => {
   });
 });
 
+app.get("/api/debug-search", async (req, res) => {
+  try {
+    const r = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
+      params: { OC: OC_USER_ID, target: "law", type: "JSON", query: req.query.q || "형법" },
+    });
+    res.json({ status: r.status, data: JSON.stringify(r.data).slice(0, 800) });
+  } catch (e) {
+    res.json({ error: e.message, status: e.response?.status, data: String(e.response?.data).slice(0, 500) });
+  }
+});
 app.use(express.static(path.join(__dirname, "..")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
