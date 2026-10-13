@@ -137,32 +137,48 @@ const Utils = {
 const lawIdCache = new Map();
 const lawArticlesCache = new Map();
 
+const normName = (s) => String(s || "").replace(/[\s「」]/g, "");
+for (const l of VALID_LAW_IDS) lawIdCache.set(normName(l.lawName), l.lawId);
+
 async function getLawIdByName(lawName) {
-  if (lawIdCache.has(lawName)) return lawIdCache.get(lawName);
+  const key = normName(lawName);
+  if (lawIdCache.has(key)) return lawIdCache.get(key);
+  const found = (id) => {
+    if (!id) return null;
+    lawIdCache.set(key, String(id));
+    return String(id);
+  };
 
+  // 1) lawSearch: 페이지를 넘기며 정확 일치 (법령명 → 약칭 순)
   try {
-    const response = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
-      params: { OC: OC_USER_ID, target: "law", type: "JSON", query: lawName },
-    });
-
-    const lawList = response.data?.LawSearch?.law;
-    if (!lawList) return null;
-
-    const items = Array.isArray(lawList) ? lawList : [lawList];
-    const matched =
-      items.find(
-        (item) =>
-          String(item?.["법령명한글"] || "").replace(/\s+/g, "") ===
-          lawName.replace(/\s+/g, "")
-      ) || items[0];
-
-    const lawId = String(matched?.["법령일련번호"] || matched?.["법령ID"] || "");
-    if (lawId) {
-      lawIdCache.set(lawName, lawId);
-      return lawId;
+    let abbrHit = null;
+    for (let page = 1; page <= 5; page++) {
+      const { data } = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
+        params: { OC: OC_USER_ID, target: "law", type: "JSON", query: lawName, display: 100, page },
+      });
+      const list = data?.LawSearch?.law;
+      const items = list ? (Array.isArray(list) ? list : [list]) : [];
+      const hit = items.find((it) => normName(it?.["법령명한글"]) === key);
+      if (hit?.["법령ID"]) return found(hit["법령ID"]);
+      if (!abbrHit) abbrHit = items.find((it) => normName(it?.["법령약칭명"]) === key);
+      if (items.length < 100) break;
     }
+    if (abbrHit?.["법령ID"]) return found(abbrHit["법령ID"]);
+    console.warn(`[lawSearch 매칭 실패] ${lawName}`);
   } catch (err) {
-    console.error(`법령 검색 실패 (${lawName}):`, err.message);
+    console.warn(`[lawSearch 실패] ${lawName}:`, err.message);
+  }
+
+  // 2) lawService LM(법령명) 폴백
+  try {
+    const { data } = await axios.get(LAW_API_URL, {
+      params: { OC: OC_USER_ID, target: "law", type: "JSON", LM: lawName },
+    });
+    const id = data?.["법령"]?.["기본정보"]?.["법령ID"];
+    if (id) return found(id);
+    console.warn(`[LM 조회 빈 응답] ${lawName}:`, JSON.stringify(data).slice(0, 200));
+  } catch (err) {
+    console.warn(`[LM 조회 실패] ${lawName}:`, err.message);
   }
   return null;
 }
