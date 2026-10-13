@@ -198,16 +198,24 @@ function extractReferences(content) {
   if (!content) return { internal: [], external: [] };
 
   const external = [];
+  let lastLaw = null;
   const cleanContent = content.replace(
-    /([가-힣]+법)\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
-    (match, lawName, articleNum) => {
-      external.push({ lawName, articleNum: articleNum.replace(/\s+/g, "") });
+    /(?:「([^」]+)」|(같은\s*법)|([가-힣]+법))\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
+    (m, bracket, same, plain, art) => {
+      const articleNum = art.replace(/\s+/g, "");
+      if (same) {
+        if (!lastLaw) return m; // 앞에 타법이 없으면 자기 법 참조로 둠
+        external.push({ lawName: lastLaw, articleNum });
+        return "";
+      }
+      lastLaw = (bracket || plain).replace(/\s+/g, " ").trim();
+      external.push({ lawName: lastLaw, articleNum });
       return "";
     }
   );
 
-  const internalMatches = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)];
-  const internal = internalMatches.map((m) => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
+  const internal = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)]
+    .map((m) => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
 
   return { internal, external };
 }
@@ -826,6 +834,18 @@ app.get("/api/mistral-models", async (req, res) => {
     console.error("Mistral 모델 목록 조회 오류:", err.message);
     return res.status(err?.response?.status || 500).json({ error: "Mistral 모델 목록 조회 실패", message: err?.response?.data?.message || err.message, serverError: true });
   }
+});
+
+app.get("/api/debug-ref", async (req, res) => {
+  const map = await getLawArticleMap(req.query.lawId || "001638"); // 도로교통법
+  const arts = [...map.values()];
+  const sample = arts.find((a) => /「[^」]+」\s*제\s*\d+\s*조/.test(a.content));
+  res.json({
+    articleCount: arts.length,
+    hasBracketRef: !!sample,
+    sample: sample && { num: sample.num, text: sample.content.slice(0, 300), refs: extractReferences(sample.content) },
+    lawIdOfXingbeop: await getLawIdByName("형법"),
+  });
 });
 
 app.use(express.static(path.join(__dirname, "..")));
