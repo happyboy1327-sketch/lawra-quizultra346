@@ -474,7 +474,7 @@ const LawService = {
 // ============================================================================
 // 4. 프롬프트 정의 (Prompts)
 // ============================================================================
-const randomOptionsTemplate = (correctAnswer, wrongAnswers) => {
+const randomOptionsTemplate = () => {
   const correctAnswer = "[정답 내용]";
  const wrongAnswers = ["[오답 내용]", "[오답 내용]", "[오답 내용]"];
   const pos = Math.floor(Math.random() * 4);
@@ -563,9 +563,9 @@ A씨는 서울시 주택임대차 조정위원회에서 조정위원으로 재�
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설 및 오답 내 키워드와 관련된 조항 설명]", "Boolean": true},
   "question": "[질문 내용]",
   "options": [
-    ${randomOptionsTemplate(correctAnswer, wrongAnswers)}
+    ${randomOptionsTemplate()}
   ],
-  "answer": "${correctAnswer}",
+  "answer": "[정답 내용]",
   "timer_sec": 15
 }`,
 
