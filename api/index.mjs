@@ -104,8 +104,8 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
-    // [수정] answer를 강제로 매칭시켜 오답을 정답으로 뒤집던 로직 수정
-    // LLM이 is_correct로 지정한 진짜 정답 보기를 기준으로 answer를 동기화
+    // [핵심 수정] LLM이 지정한 진짜 정답 보기(is_correct === true)를 기준으로 answer를 동기화
+    // 불일치로 인해 해설/정답이 꼬이는 현상을 원천 차단함
     const correctOpt = rawOptions.find(opt => opt.is_correct) || rawOptions[0];
     const answer = correctOpt ? correctOpt.text : this.normalizeText(quiz.answer);
 
@@ -130,7 +130,6 @@ const Utils = {
 
     return normalized;
   }
-
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
