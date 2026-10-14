@@ -475,6 +475,8 @@ const LawService = {
 // 4. 프롬프트 정의 (Prompts)
 // ============================================================================
 const randomOptionsTemplate = (correctAnswer, wrongAnswers) => {
+  const correctAnswer = "[정답 내용]";
+ const wrongAnswers = ["[오답 내용]", "[오답 내용]", "[오답 내용]"];
   const pos = Math.floor(Math.random() * 4);
   let wrongIdx = 0;
   return Array.from({ length: 4 }, (_, i) =>
