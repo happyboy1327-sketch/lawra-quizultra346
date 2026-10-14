@@ -593,6 +593,32 @@ ${JSON.stringify(quiz, null, 2)}
 // ============================================================================
 // 5. 퀴즈 서비스 및 3단계 검증 파이프라인 (Quiz AI Service)
 // ============================================================================
+
+function repairJson(s) {
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (!inStr) {
+      if (c === '"') inStr = true;
+      out += c;
+      continue;
+    }
+    if (c === "\\") { out += c + (s[i + 1] ?? ""); i++; continue; }
+    if (c === '"') {
+      // 닫는 따옴표: 뒤에 } ] : 또는 ", "다음키": / , { / , [ 가 올 때만
+      if (/^\s*(?:[}\]:]|,\s*(?:"[^"\n]{1,40}"\s*:|[{\[]))/.test(s.slice(i + 1))) { inStr = false; out += c; }
+      else out += '\\"';
+      continue;
+    }
+    if (c === "\n") { out += "\\n"; continue; }
+    if (c === "\r") { continue; }
+    if (c === "\t") { out += "\\t"; continue; }
+    out += c;
+  }
+  return out;
+}
+
 const QuizService = {
   lastCallAt: 0,
   queueTail: Promise.resolve(),
@@ -627,7 +653,12 @@ const QuizService = {
     
     let content = response?.choices?.[0]?.message?.content;
     if (typeof content !== "string") return null;
-    return JSON.parse(content.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim());
+    const cleaned = content.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+try {
+  return JSON.parse(cleaned);
+} catch {
+  return JSON.parse(repairJson(cleaned));
+}
   },
 
   async generateQuiz(article, retriesLeft = 2) {
