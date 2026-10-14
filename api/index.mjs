@@ -809,7 +809,7 @@ try {
       const reStep1 = this.validateRequiredFields(correctedQuiz);
       if (!reStep1.valid) return { valid: false, step: 1, reason: `재검증 필수 필드 실패: ${reStep1.reason}`, quiz: correctedQuiz };
       
-      const reStep2 = await this.validateBlindSolver(correctedQuiz, article);
+      const reStep2 = await this.validateBlindSolver(correctedQuiz, article, refContent);
       if (!reStep2.valid) return { valid: false, step: 2, reason: `재검증 블라인드 솔버 실패: ${reStep2.reason}`, quiz: correctedQuiz };
       
       console.log("  └ [재검증 통과] 수정된 퀴즈 정답 논리 일치 확인");
