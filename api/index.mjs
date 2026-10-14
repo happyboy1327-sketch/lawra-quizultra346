@@ -485,7 +485,7 @@ const randomOptionsTemplate = () => {
     });
   }
   
-  return options; // 진짜 Array로 반환
+  return options.join(",\n");// 진짜 Array로 반환
 };
 
 const PROMPTS = {
