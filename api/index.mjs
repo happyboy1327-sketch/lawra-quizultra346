@@ -479,14 +479,13 @@ const randomOptionsTemplate = () => {
   const options = [];
   
   for (let i = 0; i < 4; i++) {
-    if (i === pos) {
-      options.push(`{"text": "[정답 내용]", "is_correct": true}`);
-    } else {
-      options.push(`{"text": "[오답 내용]", "is_correct": false}`);
-    }
+    options.push({
+      text: i === pos ? "[정답 내용]" : "[오답 내용]",
+      is_correct: i === pos
+    });
   }
   
-  return options.join(",\n    ");
+  return options; // 진짜 Array로 반환
 };
 
 const PROMPTS = {
