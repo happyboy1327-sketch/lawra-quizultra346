@@ -106,9 +106,35 @@ const Utils = {
 
     // answer와 공백 제외 완전 일치하는 보기가 있을 때만 is_correct 플래그 보정
     const cleanStr = (s) => String(s || "").replace(/\s+/g, "").trim();
-    const targetAnswer = cleanStr(quiz.answer);
-    const matchedIndex = rawOptions.findIndex(opt => cleanStr(opt.text) === targetAnswer);
+const targetAnswer = cleanStr(quiz.answer);
 
+// 편집 거리 행렬을 이용한 유사도 계산 함수 (90% 이상 일치)
+const getSimilarity = (s1, s2) => {
+    const longer = s1.length > s2.length ? s1 : s2;
+    if (longer.length === 0) return 1.0;
+    const costs = [];
+    for (let i = 0; i <= s1.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= s2.length; j++) {
+            if (i === 0) {
+                costs[j] = j;
+            } else if (j > 0) {
+                let newValue = costs[j - 1];
+                if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                    newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                }
+                costs[j - 1] = lastValue;
+                lastValue = newValue;
+            }
+        }
+        if (i > 0) costs[s2.length] = lastValue;
+    }
+    return (longer.length - costs[s2.length]) / longer.length;
+};
+
+const matchedIndex = rawOptions.findIndex(opt => {
+    return getSimilarity(cleanStr(opt.text), targetAnswer) >= 0.9;
+});
     const options = matchedIndex !== -1
       ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
       : rawOptions;
