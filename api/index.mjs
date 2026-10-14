@@ -104,14 +104,15 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
-    // answer와 공백 제외 완전 일치하는 보기가 있을 때만 is_correct 플래그 보정
-    const cleanStr = (s) => String(s || "").replace(/\s+/g, "").trim();
-    const targetAnswer = cleanStr(quiz.answer);
-    const matchedIndex = rawOptions.findIndex(opt => cleanStr(opt.text) === targetAnswer);
+    // [수정] answer를 강제로 매칭시켜 오답을 정답으로 뒤집던 로직 수정
+    // LLM이 is_correct로 지정한 진짜 정답 보기를 기준으로 answer를 동기화
+    const correctOpt = rawOptions.find(opt => opt.is_correct) || rawOptions[0];
+    const answer = correctOpt ? correctOpt.text : this.normalizeText(quiz.answer);
 
-    const options = matchedIndex !== -1
-      ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
-      : rawOptions;
+    const options = rawOptions.map(opt => ({
+      ...opt,
+      is_correct: opt.text === answer,
+    }));
 
     const normalized = {
       ...quiz,
@@ -119,9 +120,9 @@ const Utils = {
       category: this.normalizeText(quiz.category),
       explanation,
       question: this.normalizeText(quiz.question),
-      answer: this.normalizeText(quiz.answer),
+      answer,
       timer_sec: Number(quiz.timer_sec) || 15,
-      options, // 셔플 제거하여 LLM이 생성한 순서와 해설 번호가 100% 일치하도록 함
+      options,
     };
 
     normalized.explanation.string = normalized.explanation.string
@@ -129,7 +130,6 @@ const Utils = {
 
     return normalized;
   }
-};
 
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
