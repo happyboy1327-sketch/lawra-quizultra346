@@ -561,9 +561,9 @@ A씨는 서울시 주택임대차 조정위원회에서 조정위원으로 재�
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설 및 오답 내 키워드와 관련된 조항 설명]", "Boolean": true},
   "question": "[질문 내용]",
   "options": [
-    ${randomOptionsTemplate(answer, wrongAnswersList)}
+    ${randomOptionsTemplate(correctAnswer, wrongAnswers)}
   ],
-  "answer": "${answer}",
+  "answer": "${correctAnswer}",
   "timer_sec": 15
 }`,
 
