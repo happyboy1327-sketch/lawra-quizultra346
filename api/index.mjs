@@ -231,8 +231,43 @@ function extractReferences(content) {
     }
   );
 
-  const internalMatches = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)];
-  const internal = internalMatches.map((m) => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
+  const internalSet = new Set();
+
+  const articleRangeRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?\s*(?:부터|부터는)\s*(?:제\s*)?(\d+)\s*조(?:의\s*(\d+))?/g;
+  let rangeMatch;
+  let processedContent = cleanContent;
+
+  while ((rangeMatch = articleRangeRegex.exec(cleanContent)) !== null) {
+    const startNum = parseInt(rangeMatch[1], 10);
+    const startGaji = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : 0;
+    const endNum = parseInt(rangeMatch[3], 10);
+    const endGaji = rangeMatch[4] ? parseInt(rangeMatch[4], 10) : 0;
+
+    if (startNum === endNum) {
+      internalSet.add(`제${startNum}조${startGaji ? `의${startGaji}` : ""}`);
+    } else if (startNum < endNum) {
+      for (let n = startNum; n <= endNum; n++) {
+        internalSet.add(`제${n}조`);
+      }
+    }
+    processedContent = processedContent.replace(rangeMatch[0], "");
+  }
+
+  const hangRangeRegex = /(?:제\s*)?(\d+)\s*항\s*(?:부터|부터는)\s*(?:제\s*)?(\d+)\s*항/g;
+  while ((rangeMatch = hangRangeRegex.exec(processedContent)) !== null) {
+    processedContent = processedContent.replace(rangeMatch[0], "");
+  }
+
+  const hoRangeRegex = /(?:제\s*)?(\d+)\s*호\s*(?:부터|부터는)\s*(?:제\s*)?(\d+)\s*호/g;
+  while ((rangeMatch = hoRangeRegex.exec(processedContent)) !== null) {
+    processedContent = processedContent.replace(rangeMatch[0], "");
+  }
+
+  const internalMatches = [...processedContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)];
+  internalMatches.forEach((m) => {
+    internalSet.add(`제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
+  });
+  const internal = Array.from(internalSet);
 
   return { internal, external };
 }
