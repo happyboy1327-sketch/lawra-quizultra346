@@ -10,23 +10,12 @@ import axios from "axios";
 dotenv.config();
 
 // ============================================================================
-// 0. 체계적인 로깅 유틸리티 (Logger Utility)
-// ============================================================================
-const Logger = {
-  timestamp: () => new Date().toISOString(),
-  info: (tag, msg, data = "") => console.log(`[${Logger.timestamp()}] [INFO] [${tag}] ${msg}`, data !== "" ? data : ""),
-  success: (tag, msg, data = "") => console.log(`[${Logger.timestamp()}] [SUCCESS] [${tag}] ${msg}`, data !== "" ? data : ""),
-  warn: (tag, msg, data = "") => console.warn(`[${Logger.timestamp()}] [WARN] [${tag}] ${msg}`, data !== "" ? data : ""),
-  error: (tag, msg, err = "") => console.error(`[${Logger.timestamp()}] [ERROR] [${tag}] ${msg}`, err?.message || err, err?.stack || "")
-};
-
-// ============================================================================
 // 1. 설정 및 초기화 (Configuration & Init)
 // ============================================================================
-Logger.info("INIT", "=== 서버 환경 변수 및 설정 로드 시작 ===");
-Logger.info("INIT", `LAW_GOV_OC: ${process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : "없음 (필수)"}`);
-Logger.info("INIT", `LAW_QUIZ_MISTRAL_KEY: ${process.env.LAW_QUIZ_MISTRAL_KEY ? "존재" : "없음 (필수)"}`);
-Logger.info("INIT", `FIREBASE_SERVICE_ACCOUNT_KEY: ${process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음 (필수)"}`);
+console.log("=== 서버 시작 시 환경 변수 확인 ===");
+console.log("LAW_GOV_OC:", process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : "없음");
+console.log("LAW_QUIZ_MISTRAL_KEY:", process.env.LAW_QUIZ_MISTRAL_KEY ? "존재" : "없음");
+console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음");
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = 'ministral-14b-2512';
@@ -49,16 +38,6 @@ const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
 const app = express();
 app.use(express.json());
 
-// HTTP 요청 로깅 미들웨어
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    Logger.info("HTTP", `${req.method} ${req.originalUrl} -> 상태코드: ${res.statusCode} (${duration}ms)`);
-  });
-  next();
-});
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -67,18 +46,17 @@ let initializationError = null;
 
 try {
   const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY 환경 변수가 설정되지 않았습니다.");
+  if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY 환경 변수 없음");
   
   db = getFirestore(initializeApp({ credential: cert(JSON.parse(rawKey.trim())) }));
-  Logger.success("FIREBASE", "Firebase Admin SDK 초기화 성공");
+  console.log("Firebase Admin SDK 초기화 성공");
 } catch (err) {
-  Logger.error("FIREBASE", "Firebase Admin SDK 초기화 실패", err);
+  console.error("Firebase Admin SDK 초기화 실패:", err.message);
   initializationError = `Firebase Admin 초기화 실패: ${err.message}`;
 }
 
 app.use((req, res, next) => {
   if (!db) {
-    Logger.error("DB_CHECK", "데이터베이스 미연결 상태로 요청 차단됨");
     return res.status(500).json({ error: "DB 연결 실패", message: initializationError, serverError: true });
   }
   next();
@@ -92,9 +70,7 @@ const Utils = {
 
   isRateLimitError: (error) => {
     const status = error?.statusCode || error?.status || error?.response?.status;
-    const isRate = status === 429 || /429|rate.?limit/i.test(error?.message || "");
-    if (isRate) Logger.warn("RATE_LIMIT", "Mistral API Rate Limit 감지됨");
-    return isRate;
+    return status === 429 || /429|rate.?limit/i.test(error?.message || "");
   },
 
   normalizeText: function (value) {
@@ -109,10 +85,7 @@ const Utils = {
   },
 
   normalizeQuiz: function (quiz) {
-    if (!quiz || typeof quiz !== "object") {
-      Logger.warn("NORMALIZE", "정규화 대상 퀴즈 데이터가 유효하지 않음", quiz);
-      return null;
-    }
+    if (!quiz || typeof quiz !== "object") return null;
 
     const explanation = (() => {
       const rawExpl = quiz.explanation;
@@ -131,33 +104,37 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
+    // answer와 공백 제외 완전 일치하는 보기가 있을 때만 is_correct 플래그 보정
     const cleanStr = (s) => String(s || "").replace(/\s+/g, "").trim();
-    const targetAnswer = cleanStr(quiz.answer);
+const targetAnswer = cleanStr(quiz.answer);
 
-    const getSimilarity = (s1, s2) => {
-      const longer = s1.length > s2.length ? s1 : s2;
-      if (longer.length === 0) return 1.0;
-      const costs = [];
-      for (let i = 0; i <= s1.length; i++) {
+// 편집 거리 행렬을 이용한 유사도 계산 함수 (90% 이상 일치)
+const getSimilarity = (s1, s2) => {
+    const longer = s1.length > s2.length ? s1 : s2;
+    if (longer.length === 0) return 1.0;
+    const costs = [];
+    for (let i = 0; i <= s1.length; i++) {
         let lastValue = i;
         for (let j = 0; j <= s2.length; j++) {
-          if (i === 0) {
-            costs[j] = j;
-          } else if (j > 0) {
-            let newValue = costs[j - 1];
-            if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-              newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+            if (i === 0) {
+                costs[j] = j;
+            } else if (j > 0) {
+                let newValue = costs[j - 1];
+                if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                    newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                }
+                costs[j - 1] = lastValue;
+                lastValue = newValue;
             }
-            costs[j - 1] = lastValue;
-            lastValue = newValue;
-          }
         }
         if (i > 0) costs[s2.length] = lastValue;
-      }
-      return (longer.length - costs[s2.length]) / longer.length;
-    };
+    }
+    return (longer.length - costs[s2.length]) / longer.length;
+};
 
-    const matchedIndex = rawOptions.findIndex(opt => getSimilarity(cleanStr(opt.text), targetAnswer) >= 0.9);
+const matchedIndex = rawOptions.findIndex(opt => {
+    return getSimilarity(cleanStr(opt.text), targetAnswer) >= 0.9;
+});
     const options = matchedIndex !== -1
       ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
       : rawOptions;
@@ -170,7 +147,7 @@ const Utils = {
       question: this.normalizeText(quiz.question),
       answer: this.normalizeText(quiz.answer),
       timer_sec: Number(quiz.timer_sec) || 15,
-      options,
+      options, // 셔플 제거하여 LLM이 생성한 순서와 해설 번호가 100% 일치하도록 함
     };
 
     normalized.explanation.string = normalized.explanation.string
@@ -181,7 +158,7 @@ const Utils = {
 };
 
 // ============================================================================
-// 3. 법령 데이터 파싱 및 범위 전개형 인용 분석 엔진
+// 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
 const lawIdCache = new Map();
 const lawArticlesCache = new Map();
@@ -195,10 +172,10 @@ async function getLawIdByName(lawName) {
   const found = (id) => {
     if (!id) return null;
     lawIdCache.set(key, String(id));
-    Logger.info("LAW_CACHE", `법령명 매핑 완료: ${lawName} -> ID ${id}`);
     return String(id);
   };
 
+  // 1) lawSearch: 페이지를 넘기며 정확 일치 (법령명 → 약칭 순)
   try {
     let abbrHit = null;
     for (let page = 1; page <= 5; page++) {
@@ -213,18 +190,21 @@ async function getLawIdByName(lawName) {
       if (items.length < 100) break;
     }
     if (abbrHit?.["법령ID"]) return found(abbrHit["법령ID"]);
+    console.warn(`[lawSearch 매칭 실패] ${lawName}`);
   } catch (err) {
-    Logger.warn("LAW_SEARCH", `lawSearch API 호출 실패 (${lawName}):`, err.message);
+    console.warn(`[lawSearch 실패] ${lawName}:`, err.message);
   }
 
+  // 2) lawService LM(법령명) 폴백
   try {
     const { data } = await axios.get(LAW_API_URL, {
       params: { OC: OC_USER_ID, target: "law", type: "JSON", LM: lawName },
     });
     const id = data?.["법령"]?.["기본정보"]?.["법령ID"];
     if (id) return found(id);
+    console.warn(`[LM 조회 빈 응답] ${lawName}:`, JSON.stringify(data).slice(0, 200));
   } catch (err) {
-    Logger.warn("LAW_LM", `LM 파라미터 조회 실패 (${lawName}):`, err.message);
+    console.warn(`[LM 조회 실패] ${lawName}:`, err.message);
   }
   return null;
 }
@@ -233,16 +213,12 @@ async function getLawArticleMap(lawId) {
   if (lawArticlesCache.has(lawId)) return lawArticlesCache.get(lawId);
 
   try {
-    Logger.info("LAW_FETCH", `법령 전문 API 호출 중 (ID: ${lawId})`);
     const { data } = await axios.get(LAW_API_URL, {
       params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
     });
 
     const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
-    if (!joData) {
-      Logger.warn("LAW_FETCH", `조문 데이터가 존재하지 않음 (ID: ${lawId})`);
-      return new Map();
-    }
+    if (!joData) return new Map();
 
     const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
     const articleMap = new Map();
@@ -253,60 +229,35 @@ async function getLawArticleMap(lawId) {
     });
 
     lawArticlesCache.set(lawId, articleMap);
-    Logger.success("LAW_FETCH", `법령 조문 맵 로드 성공: [${lawName}] 총 ${articleMap.size}개 조문`);
     return articleMap;
   } catch (err) {
-    Logger.error("LAW_FETCH", `법령 Map 로드 실패 (ID: ${lawId})`, err);
+    console.error(`법령 Map 로드 실패 (ID: ${lawId}):`, err.message);
     return new Map();
   }
-}
-
-function expandCitationRanges(text) {
-  if (!text) return text;
-  let processed = text;
-  const rangeRegex = /제\s*(\d+)\s*(조|항|호)\s*부터\s*제\s*(\d+)\s*(조|항|호)\s*까지/g;
-  
-  processed = processed.replace(rangeRegex, (match, startNum, startUnit, endNum, endUnit) => {
-    if (startUnit !== endUnit) return match;
-    const start = parseInt(startNum, 10);
-    const end = parseInt(endNum, 10);
-    if (isNaN(start) || isNaN(end) || start > end || (end - start) > 50) return match;
-    
-    const items = [];
-    for (let i = start; i <= end; i++) {
-      items.push(`제${i}${startUnit}`);
-    }
-    return items.join(", ");
-  });
-
-  return processed;
 }
 
 function extractReferences(content) {
   if (!content) return { internal: [], external: [] };
 
-  const expandedContent = expandCitationRanges(content);
-  const internal = [];
   const external = [];
-  
-  const lawCitationRegex = /(?:「([^」]+)」|([가-힣]+법))\s*(제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?)/g;
-  let match;
-  while ((match = lawCitationRegex.exec(expandedContent)) !== null) {
-    const lawName = match[1] || match[2];
-    const artFull = match[3].replace(/\s+/g, "");
-    const artNumMatch = artFull.match(/제(\d+조(?:의\d+)?)/);
-    if (lawName && artNumMatch) {
-      external.push({ lawName, articleNum: artNumMatch[0] });
+  let lastLaw = null;
+  const cleanContent = content.replace(
+    /(?:「([^」]+)」|(같은\s*법)|([가-힣]+법))\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
+    (m, bracket, same, plain, art) => {
+      const articleNum = art.replace(/\s+/g, "");
+      if (same) {
+        if (!lastLaw) return m; // 앞에 타법이 없으면 자기 법 참조로 둠
+        external.push({ lawName: lastLaw, articleNum });
+        return "";
+      }
+      lastLaw = (bracket || plain).replace(/\s+/g, " ").trim();
+      external.push({ lawName: lastLaw, articleNum });
+      return "";
     }
-  }
+  );
 
-  const internalRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
-  while ((match = internalRegex.exec(expandedContent)) !== null) {
-    const artStr = `제${match[1]}조${match[2] ? `의${match[2]}` : ""}`;
-    if (!internal.includes(artStr)) {
-      internal.push(artStr);
-    }
-  }
+  const internal = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)]
+    .map((m) => `제${m[1]}조${m[2] ? `의${m[2]}` : ""}`);
 
   return { internal, external };
 }
@@ -332,6 +283,7 @@ const LawParser = {
     if (!rawContent && (!rawNo || rawNo === "0")) return "";
     if (!rawContent) return `${indent}${rawNo}`;
 
+    // 항번호가 존재하고 "0"이 아닌 경우에만 항/호 번호 접두사 적용
     if (rawNo && rawNo !== "0") {
       const coreNo = rawNo.replace(/(호|목|항)$/, "").trim();
       const escapedCore = coreNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -344,6 +296,8 @@ const LawParser = {
         return `${indent}${prefix} ${rawContent}`;
       }
     }
+    
+    // 단일 조항(항번호 없음/0)인 경우 번호 없이 내용만 반환
     return `${indent}${rawContent}`;
   },
 
@@ -397,7 +351,7 @@ const LawParser = {
         const hText = String(h?.["항내용"] || "").trim();
         let hNo = String(h?.["항번호"] || "").trim();
         
-        if (hNo === "0") hNo = "";
+        if (hNo === "0") hNo = ""; // "0"은 단일 조항이므로 번호 제거
 
         if (hText) {
           let cleanHText = hText;
@@ -449,98 +403,20 @@ const LawParser = {
   }
 };
 
-const CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟";
-
-function hangLabelOf(hangText) {
-  const m = String(hangText || "").match(/^\s*([①-⑳㉑-㉟])(?:\s*의\s*(\d+))?/);
-  return m ? `제${CIRCLED.indexOf(m[1]) + 1}항${m[2] ? `의${m[2]}` : ""}` : null;
-}
-
-function extractClauseCitations(parsed) {
-  const hangs = parsed?.hang?.length ? parsed.hang : [parsed?.content || ""];
-  const out = [];
-
-  for (const hangText of hangs) {
-    const expandedHangText = expandCitationRanges(hangText);
-    const fromHang = hangLabelOf(hangText);
-    const lines = String(expandedHangText).split("\n");
-    let currentHo = null;
-    let currentMok = null;
-
-    for (const raw of lines) {
-      let m;
-      if ((m = raw.match(/^ {4}([가-하])\./))) {
-        currentMok = `${m[1]}목`;
-      } else if ((m = raw.match(/^ {2}(\d+)(?:\s*의\s*(\d+))?\./))) {
-        currentHo = `제${m[1]}호${m[2] ? `의${m[2]}` : ""}`;
-        currentMok = null;
-      } else if (!/^\s/.test(raw)) {
-        currentHo = null;
-        currentMok = null;
-      }
-
-      const citeRegex = /(?:(제\s*\d+\s*조(?:의\s*\d+)?))?\s*(?:(제\s*\d+\s*항))?\s*(?:(제\s*\d+\s*호))?\s*([가-하]\s*목)?/g;
-      let cMatch;
-      while ((cMatch = citeRegex.exec(raw)) !== null) {
-        if (!cMatch[1] && !cMatch[2] && !cMatch[3] && !cMatch[4]) continue;
-        const art = cMatch[1] ? cMatch[1].replace(/\s+/g, "") : null;
-        const hang = cMatch[2] ? cMatch[2].replace(/\s+/g, "") : null;
-        const ho = cMatch[3] ? cMatch[3].replace(/\s+/g, "") : null;
-        const mok = cMatch[4] ? cMatch[4].replace(/\s+/g, "") : null;
-
-        if (art === parsed?.num && !hang && !ho && !mok) continue;
-
-        const base = art || (hang ? "같은 조" : ho ? "같은 항" : "같은 호");
-        const toLabel = [base, hang, ho, mok].filter(Boolean).join(" ");
-        const snippet = raw.replace(/\s+/g, " ").trim();
-
-        out.push({
-          fromHang,
-          fromHo: currentHo,
-          fromMok: currentMok,
-          toLabel,
-          snippet: snippet.length > 40 ? snippet.substring(0, 40) + "..." : snippet
-        });
-      }
-    }
-  }
-  return out;
-}
-
-function buildCitationNotes(collected, mainLawName, maxLines = 60) {
-  const lines = [];
-  const seen = new Set();
-
-  for (const art of collected.values()) {
-    const lawPrefix = art.lawName && art.lawName !== mainLawName ? `[${art.lawName}] ` : "";
-    for (const c of extractClauseCitations(art)) {
-      const from = [`${lawPrefix}${art.num}`, c.fromHang, c.fromHo, c.fromMok].filter(Boolean).join(" ");
-      const key = `${from}>${c.toLabel}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      lines.push(`- ${from} → ${c.toLabel} 인용 (원문: "...${c.snippet}...")`);
-      if (lines.length >= maxLines) return lines.join("\n");
-    }
-  }
-  return lines.join("\n");
-}
-
 const LawService = {
   async fetchLawArticles(lawId) {
-    if (!OC_USER_ID) {
-      Logger.error("LAW_SERVICE", "LAW_GOV_OC 환경 변수가 설정되지 않았습니다.");
-      return [];
-    }
+    if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
     try {
       const articleMap = await getLawArticleMap(lawId);
       return Array.from(articleMap.values());
     } catch (err) {
-      Logger.error("LAW_SERVICE", `법령 조문 목록 조회 실패 (ID: ${lawId})`, err);
+      console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
       return [];
     }
   },
 
-  async collectReferences(lawId, parsed, out = {}) {
+  // 뽑힌 조문 1개에 대해서만 참조 조문 수집
+  async collectReferences(lawId, parsed) {
     const visited = new Set();
     const collected = new Map();
 
@@ -568,6 +444,7 @@ const LawService = {
 
       for (const ext of external) {
         const targetLawId = await getLawIdByName(ext.lawName);
+        console.log(`[타법 참조] ${ext.lawName} ${ext.articleNum} -> ${targetLawId}`);
         if (targetLawId && targetLawId !== currentLawId) {
           await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
         }
@@ -576,9 +453,7 @@ const LawService = {
 
     const selfKey = `${lawId}_${parsed.num}`;
     await collectArticle(lawId, parsed.num);
-    out.notes = buildCitationNotes(collected, parsed.lawName);
 
-    Logger.info("REF_COLLECT", `참조 조문 수집 완료: 총 ${collected.size - 1}개 연계 조문 수집됨`);
     return Array.from(collected.entries())
       .filter(([k]) => k !== selfKey)
       .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
@@ -586,19 +461,13 @@ const LawService = {
   },
 
   async fetchRandomArticle(law) {
-    Logger.info("RANDOM_ARTICLE", `대상 법령 선택됨: ${law.lawName} (ID: ${law.lawId})`);
     const articles = await this.fetchLawArticles(law.lawId);
     const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
-    if (!validArticles.length) {
-      Logger.warn("RANDOM_ARTICLE", `유효한 조문이 존재하지 않음: ${law.lawName}`);
-      return null;
-    }
+    if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
 
     const picked = validArticles[Math.floor(Math.random() * validArticles.length)];
-    Logger.success("RANDOM_ARTICLE", `랜덤 조문 선정됨: ${law.lawName} ${picked.num}`);
-    const out = {};
-    const referencedContent = await this.collectReferences(law.lawId, picked, out);
-    return { ...picked, referencedContent, citationNotes: out.notes || "" };
+    const referencedContent = await this.collectReferences(law.lawId, picked);
+    return { ...picked, referencedContent };
   }
 };
 
@@ -607,7 +476,7 @@ const LawService = {
 // ============================================================================
 const randomOptionsTemplate = () => {
   const correctAnswer = "[정답 내용]";
-  const wrongAnswers = ["[오답 내용]", "[오답 내용]", "[오답 내용]"];
+ const wrongAnswers = ["[오답 내용]", "[오답 내용]", "[오답 내용]"];
   const pos = Math.floor(Math.random() * 4);
   let wrongIdx = 0;
   return Array.from({ length: 4 }, (_, i) =>
@@ -627,16 +496,74 @@ const PROMPTS = {
 ${content}
 
 ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
-${article.citationNotes ? `[조문 내 인용 관계]\n${article.citationNotes}\n` : ""}
-위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. **할루시네이션 엄금합니다.**
+위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. **절대로 절대로 할루시네이션 엄금합니다.**
+■ [핵심 작성 및 시점 검증 규칙]
+1. **타임라인 및 사실관계 논리 완전성 (최우선)**
+   □ 문제에 등장하는 사건의 서순, 날짜, 시점, 조건 간 모순이 단 하나도 없어야 합니다.
+   □ 유사 법률 및 개념, 사실 관계, 상관 관계, 인과 관계, 선후 관계를 혼동하지 마시오.
+   □ 피상적이거나 확실하지 않고 Outdated한 정보는 출제하지 마시오.
+   - 예: "소멸시효가 완성된 지 1년이 지났다"와 "작성 시점은 시효 완성 3개월 전이다"처럼 시점이 앞뒤가 맞지 않거나 현실적으로 불가능한 상황은 절대로 출제하지 마세요.
+   □ 시점(과거→현재→미래)과 법적 상태 변화를 타임라인순으로 철저히 검증한 후 문제를 구성하세요.
+
+2. ***문제 및 보기 구성 조건***
+   □ 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고 상식적 법률 사례 문제를 만드세요.
+   □ 법률행위의 주체(채권자, 채무자, 제3자 등)와 객체(-에게), 상대방의 지위를 명확히 구분하고, 지문 내에서 역할이 뒤바뀌지 않도록 할 것.
+   □ 인물의 가명은 A씨, B씨, 김 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 상세히 작성하세요.
+   □ 질문, 선택지 및 답지에서 "A가 B가 -한다." 같은 문법이 파괴된 문장은 절대로 내지 마시오.
+   □ 반드시 **긍정문**으로만 묻고, 질문은 구체적으로 **긍정문으로만** 작성하세요. (간접 부정문 예: ~위반되지 않는다고 볼 수 있는가? 절대 금지)
+   □ ***질문의 조건과 전제에 부합하고 상황에 맞는 정답***을 확실하게 1개만 설정하고, 나머지는 질문의 조건과 전제에 확실히 부합하지 않으며, 정답과 완전히 상반되는 오답으로 구성하세요. 절대로 복수정답을 만들면 안된다.
+
+3. **볼드 표기 및 원문 일치**
+   □ 조문 원문에서 **기간, 정도, 금액, 법률 적용 판별 기준, 법률 행사 수단**은 반드시 볼드 처리(예: **2개월**, **높은 비율로**, **더 높은 금액**, **1/3 비율**, **조서**, **만 18세 미만**)하고, 날짜 및 금액 계산 시 정밀하게 적용하세요.
+   □ 질문, 정답 보기(options/answer), 해설(explanation)의 수치·단위·시점이 실제 법령 조문과 100% 일치해야 합니다.
+   □ **answer 필드 값**과 **정답 보기(is_correct=true)**의 텍스트가 반드시 **일치해야** 합니다.
+   □ 인물명에도 반드시 볼드처리 할것(예: **B씨**). 1대1로 대응 작성하시고 단일 인물만 있을 경우 단일 인물만 해설에 언급하시오.
+
+4. **조문 인용 및 용어 엄격성 (Boolean: false 처리 기준)**
+   □ 존재하지 않는 법령명(예: '소비자보호법' 등)이 쓰인 경우 해설의 Boolean을 false 처리하세요.
+   □ '항(①, ② 등 원문자)'과 '호(1., 2. 등 숫자)'를 절대 혼동하지 말고 정확히 구분하세요.
+   □ 원문 조문에 항번호가 없거나 단일 조항인 경우, 임의로 '제1항'이나 '①' 등을 생성하지 말고 조문명(예: A법 제N조의M)만 언급하세요. 위반 시 Boolean을 false 처리하세요.
+   □ 옛날 명칭(예: 국가근로훈장, 국가공로훈장)을 사용했다면 Boolean을 false 처리하세요.
+   □ 해설에서 보기를 가리킬 때는 번호를 절대 사용하지 마세요.
+
+5. ***해설 작성 및 검증 규칙 (Boolean: false 처리 기준)***
+   □ ***문제에 언급되지 않은 제3자(예: 문제에 없던 B씨, B상회 등)가 해설에 어느 곳이라도 갑자기 등장하면 Boolean을 false 처리하세요.***
+   □ ***논리적 정합성이 일관되게 드러나야 한다. 조금이라도 논리가 어긋나는 문장이 드러나 있다면, Boolean을 false 처리하세요.***
+   □ ****선택지 내 키워드와 전혀 무관한 조항이 해설 내에 제시되었다면 Boolean을 false 처리하세요. 공표된 저작물 조항은 저작권법 제 40조, 제53조 등과는 관련없습니다.****
+   □ *****"제N조 C항에 따라", "제N조 C항의" 같은 문구가 들어간 조항(제M조 A항)은 그 인용조항을 직접 언급하여 주시기 바랍니다.*****
+   □ 날짜 계산이 틀리거나 시점(집행 시작/종료, 변제 시작 등) 서술 간 앞뒤 모순이 생기면 Boolean을 false 처리하세요.
+   □ 문제에 명시하지 않은 날짜/조건을 전제로 해설에서 언급되었다고 거짓말하면 Boolean을 false 처리하세요.
+   □ 문제에 명시되지 않은 인물의 상황이 해설에 언급되어 있다면 Boolean을 false 처리하세요.
+   □ 조항 번호와 조항 내용이 불일치하거나 무관한 조항이 끼어있으면 Boolean을 false 처리하세요.
+   □ **인물의 상황 및 입장을 명확히 구분하시오. 주체 및 객체도 혼동하면 안됩니다. 상황 및 주체, 객체를 혼동했다면 즉시 Boolean을 false 처리하세요.**
+   □ **오답 해설에서 실제 보기나 문제에 등장하지도 않은 엉뚱한 조항(예: 제141조 제2항 등)을 지어내어 언급하면 즉시 Boolean을 false 처리하세요.
+   □ 공탁절차 등 복잡하거나 불확실한 지식에 대해 할루시네이션하지 마시고, 모르는 내용은 해설에서 과감히 제외하세요.
+   □ 수치 및 계산 단어에 주의하세요. (예: '과반수 이상'이라는 모호한 표현 지양, '과반수'는 초과를 의미하므로 정확한 수학적 기준 적용)
+
+6. 법령 원문에 기간이 전혀 명시되어 있지 않으면 절대로 날짜 등의 숫자를 문제나 해설에 넣지 마시오. 이 경우, calcul_check도 null로 비우시오.
+
+7. **문법을 내가 그렇게 명확히 하라고 했는데, 말 ㅈㄴ 안듣네 ㅅㅂ 예 보여줄테니까 잘 봐.**
+- 잘못된 예: A씨는 자신의 소설을 교과용도서로 편집하여 출판한 B상회가 학교교육 목적으로 해당 소설의 일부 표현을 변경하여 재출판하려 합니다. 다음 중 A씨가 이의를 제기할 수 없는 경우는?
+- 올바른 예: A씨의 소설을 교과용도서로 편집하여 출판한 B상회가 학교교육 목적으로 해당 소설의 일부 표현을 변경하여 재출판하려 합니다. 다음 중 A씨가 이의를 제기할 수 없는 경우는?
+
+8. 복수정답 잘못된 예:
+A씨는 서울시 주택임대차 조정위원회에서 조정위원으로 재직 중이던 2023년 5월에 B씨의 주택임대차 분쟁 관련 개인정보를 직무상 알게 되었습니다. A씨가 다음 중 어떤 행위를 하면 주택임대차보호법 제28조에 위반되지 않는다고 볼 수 있는가?
+1. A씨가 B씨의 개인정보를 직무상 목적 외로 C씨에게 제공한 경우
+2. A씨가 B씨의 개인정보를 직무상 목적에 부합하는 범위에서 조정위원회 내 다른 위원에게 공유한 경우
+3. A씨가 조정위원을 퇴임한 후 B씨의 개인정보를 직무상 목적 외로 D씨에게 누설한 경우
+4. A씨가 조정위원을 퇴임한 후 B씨의 개인정보를 직무상 목적에 부합하는 범위에서 관련 법적 절차에 사용한 경우
+정답은 2,4번입니다.
+
+9. **출력 형식**
+   □ 반드시 다른 부연 설명 없이 **순수 JSON** 형태만 출력하세요. 해설 내에선 오답 번호, 기호를 절대로 적지 마시오. **정답지 배치는 어디까지나 예시이며, 정답은 1번일수도 있고, 3번일 수도 있습니다.**
 
 출력 형식:
 {
   "id": "quiz-${Date.now()}",
   "category": "${article.lawName}",
   "concept_summary": "[문제 푸는 목표 및 의도, 관련 조항 및 조항내용, 법률 행위의 주체와 객체, 수단]", 
-  "calcul_check": "[날짜 및 숫자 계산식]",
-  "explanation": {"string": "[상세 해설]", "Boolean": true},
+  "calcul_check": "[문제, 해설 내 올바른 날짜 및 숫자 계산식 모두 (예1: 2016-02-14의 40일 전은 2016년 1월 5일| 예2: 3/5 = 5명의 조합원 중 과반수 이상 | 예3: 2015-02-28은 2015년 1월 1일보다 58일 늦다. |예4: 2025-03-14로부터 3영업일 이내 = 2025년 3월 19일 (→ 평일(15, 16) 제외하고 계산) )]",
+  "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 논리기 일관적으로 유기적으로 상통하는 상세 해설 및 오답 내 키워드와 관련된 조항 설명]", "Boolean": true},
   "question": "[질문 내용]",
   "options": [
     ${randomOptionsTemplate()}
@@ -646,7 +573,7 @@ ${article.citationNotes ? `[조문 내 인용 관계]\n${article.citationNotes}\
 }`,
 
   blindSolve: (quiz, articleContext, refContent) => `
-당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요.
+당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령] 및 [참조 및 인용 조문 내용]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요. 날짜 계산이 있다면 그것도 정확하게 확인하여 푸시오.
 
 [참조 법령]
 ${articleContext}
@@ -662,18 +589,56 @@ ${quiz.question}
 3. ${quiz.options?.[2]?.text}
 4. ${quiz.options?.[3]?.text}
 
+규칙:
+1. 4개 보기 중 가장 정확한 정답 1개만 고르시오.
+2. 선택한 보기의 번호(1, 2, 3, 4 중 하나)를 숫자 정수로 chosen_number 필드에 적으시오.
+3. 오직 순수 JSON만 출력하시오.
+
 출력 형식:
 {
   "chosen_number": 1,
   "reason": "[풀이 이유]"
-}`
+}`,
+
+  correction: (quiz, article, errorReason) => `
+당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 솔버 검증에서 논리적 오류로 실패했습니다. 
+아래 [오류 사유]와 [원문 조문]을 바탕으로 퀴즈의 질문, 보기, 정답, 해설을 수정하십시오.
+특히 해설에서 '항(①, ②)'과 '호(1., 2.)'를 절대 혼동하지 마십시오.
+**절대로 해설에서 실제 보기나 문제에 없는 엉뚱한 조항(예: 제141조 제2항 등)을 지어내어 언급하지 마십시오.**
+
+[원문 조문]
+${article.content}
+${article.referencedContent ? `\n[참조 조문]\n${article.referencedContent}` : ''}
+
+[오류 사유]
+${errorReason}
+
+[기존 퀴즈 데이터]
+${JSON.stringify(quiz, null, 2)}
+
+위 오류를 수정한 후, 기존과 동일한 순수 JSON 형식으로만 출력하고 아래 완벽한 문제 기준에 맞게 정의하여 수정하십시오.
+[완벽한 문제 기준]
+1. 정답, 해설 내 수치(기간/금액/비율), 시점, 법적 주체, 의무/권고 구분이 원문과 정확히 일치해야 한다.
+2. 질문의 조건과 전제가 해설, 정답의 논리와 들어맞고 상통해야 한다.
+3. 인용한 조항 번호(조, 항, 호, 목)가 실존하며 내용과 상통해야 한다.
+4. 법률 적용 조건, 법률 행사 수단, 법리 해석이나 판례/예시 적용에 오류 및 모순이 없어야 한다.
+5. 정답(answer)과 해설(explanation)의 논리가 서로 일관성이 100% 있어야 하며, 완전하게 일치해야 한다.
+6. 해설 내에 날짜 및 숫자 계산이 완전히 정확히 되어있어야 한다. [예1: "2026년 10월 15일의 6개월 이전" = "2026년 4월 15일" | 예2: 3/5 = 과반수(2.5) 이상이 맞음]
+7. 또한, 해설 내 조항번호와 그 내용이 일치하지 않으면 안된다. 선택지 내 키워드와 전혀 무관한 조항이 해설 내에 제시되었다면 해당 내용을 제거하시오.
+8. 날짜는 맞게 계산해놓고 해설에 앞뒤 모순이 생기면 안된다고.
+9. 만약 질문 자체만 보고 계산 및 판단을 할 수 없는 경우, 문제의 질문에 조건을 괄호 안에 추가하시오.
+10. 질문이 언급되지 않은 인물이 해설 내에 어디라도 엉뚱히 있을 경우, 해당 내용을 제거하시오.
+11. 해설에서 보기를 가리킬 때 "1번", "①", "오답 1", "오답 가" 같은 번호 표현을 쓰지 말고, 보기 내용을 직접 요약언급하시오.
+12. 질문에서 의도하는 주체가 불일치하다면, 반드시 질문을 시정하여 고치시오.
+
+`
 };
 
 // ============================================================================
-// 5. 퀴즈 서비스 및 검증 파이프라인
+// 5. 퀴즈 서비스 및 3단계 검증 파이프라인 (Quiz AI Service)
 // ============================================================================
+
 function repairJson(s) {
-  Logger.warn("JSON_REPAIR", "손상된 JSON 응답 감지, 복구 로직 실행 중...");
   let out = "";
   let inStr = false;
   for (let i = 0; i < s.length; i++) {
@@ -685,6 +650,7 @@ function repairJson(s) {
     }
     if (c === "\\") { out += c + (s[i + 1] ?? ""); i++; continue; }
     if (c === '"') {
+      // 닫는 따옴표: 뒤에 } ] : 또는 ", "다음키": / , { / , [ 가 올 때만
       if (/^\s*(?:[}\]:]|,\s*(?:"[^"\n]{1,40}"\s*:|[{\[]))/.test(s.slice(i + 1))) { inStr = false; out += c; }
       else out += '\\"';
       continue;
@@ -702,6 +668,7 @@ const QuizService = {
   queueTail: Promise.resolve(),
   
   async throttle() {
+    // 비동기 큐 뮤텍스로 race condition 방지 및 정확한 간격 보장
     let release;
     const nextInLine = new Promise((resolve) => { release = resolve; });
     const prevTail = this.queueTail;
@@ -712,7 +679,6 @@ const QuizService = {
     const now = Date.now();
     const wait = this.lastCallAt + MISTRAL_MIN_INTERVAL_MS - now;
     if (wait > 0) {
-      Logger.info("THROTTLE", `API 호출 간격 조절 대기 중: ${wait}ms`);
       await Utils.sleep(wait);
     }
     this.lastCallAt = Date.now();
@@ -721,8 +687,6 @@ const QuizService = {
 
   async requestMistral(prompt, reasoningEffort) {
     await this.throttle();
-    Logger.info("MISTRAL_REQ", `Mistral API 요청 전송 (모델: ${MODEL}, reasoning_effort: ${reasoningEffort})`);
-    
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
@@ -732,185 +696,279 @@ const QuizService = {
     });
     
     let content = response?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      Logger.error("MISTRAL_RES", "Mistral 응답 내용이 문자열이 아님", content);
-      return null;
-    }
-    
+    if (typeof content !== "string") return null;
     const cleaned = content.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-    try {
-      const parsed = JSON.parse(cleaned);
-      Logger.success("MISTRAL_RES", "Mistral JSON 응답 파싱 성공");
-      return parsed;
-    } catch (parseErr) {
-      Logger.warn("MISTRAL_RES", "직접 JSON 파싱 실패, 수리(repairJson) 시도", parseErr.message);
-      const repaired = JSON.parse(repairJson(cleaned));
-      Logger.success("MISTRAL_RES", "손상된 JSON 수리 및 파싱 성공");
-      return repaired;
-    }
+try {
+  return JSON.parse(cleaned);
+} catch {
+  return JSON.parse(repairJson(cleaned));
+}
   },
 
   async generateQuiz(article, retriesLeft = 2) {
-    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) {
-      Logger.warn("QUIZ_GEN", "유효하지 않은 조문 데이터로 퀴즈 생성 중단됨");
-      return null;
-    }
+    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) return null;
     
-    Logger.info("QUIZ_GEN", `퀴즈 생성 시작: [${article.lawName} ${article.num}]`);
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
     const prompt = PROMPTS.generate(article, content, refContent);
 
     try {
       const rawQuiz = await this.requestMistral(prompt, "xhigh");
-      const normalized = Utils.normalizeQuiz(rawQuiz);
-      Logger.success("QUIZ_GEN", `퀴즈 생성 및 정규화 완료 (ID: ${normalized?.id})`);
-      return normalized;
+      return Utils.normalizeQuiz(rawQuiz);
     } catch (err) {
-      Logger.error("QUIZ_GEN", `퀴즈 생성 중 오류 발생 (남은 재시도: ${retriesLeft})`, err);
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
-        Logger.info("QUIZ_GEN", "Rate Limit으로 인해 1.5초 후 재시도합니다.");
         await Utils.sleep(1500);
         return this.generateQuiz(article, retriesLeft - 1);
       }
+      console.error("Mistral 퀴즈 생성 API 오류:", err.message);
       return null;
     }
   },
 
+  // 1단계: 필수 필드 검증
   validateRequiredFields(quiz) {
     if (!quiz || typeof quiz !== "object") {
-      Logger.warn("VALIDATE", "검증 실패: 퀴즈 객체가 비어있음");
-      return { valid: false, reason: "데이터 없음" };
+      return { valid: false, reason: "퀴즈 객체 데이터 없음" };
     }
-    if (!quiz.question || !quiz.answer || !quiz.explanation?.string) {
-      Logger.warn("VALIDATE", "검증 실패: 필수 필드(질문, 정답, 해설) 누락됨", {
-        hasQ: !!quiz.question,
-        hasA: !!quiz.answer,
-        hasExp: !!quiz.explanation?.string
-      });
-      return { valid: false, reason: "필수 필드 누락" };
+    if (!quiz.question || typeof quiz.question !== "string" || !quiz.question.trim()) {
+      return { valid: false, reason: "필수 필드 누락: question" };
+    }
+    if (!quiz.answer || typeof quiz.answer !== "string" || !quiz.answer.trim()) {
+      return { valid: false, reason: "필수 필드 누락: answer" };
+    }
+    if (!quiz.explanation?.string || typeof quiz.explanation.string !== "string" || !quiz.explanation.string.trim()) {
+      return { valid: false, reason: "필수 필드 누락: explanation.string" };
+    }
+    if (quiz.explanation.Boolean !== true) {
+      return { valid: false, reason: "explanation.Boolean 필드가 true가 아님" };
     }
     if (!Array.isArray(quiz.options) || quiz.options.length !== 4) {
-      Logger.warn("VALIDATE", `검증 실패: 보기 개수가 4개가 아님 (현재: ${quiz.options?.length})`);
-      return { valid: false, reason: "보기 4개 아님" };
+      return { valid: false, reason: `보기는 정확히 4개여야 함 (현재: ${quiz.options?.length ?? 0}개)` };
     }
-    Logger.success("VALIDATE", "필수 필드 검증 통과");
+
+    const correctOptions = quiz.options.filter(opt => opt.is_correct === true);
+    if (correctOptions.length !== 1) {
+      return { valid: false, reason: `정답 보기(is_correct=true)는 정확히 1개여야 함 (현재: ${correctOptions.length}개)` };
+    }
+
+    if (correctOptions[0].text.trim() !== quiz.answer.trim()) {
+      return { valid: false, reason: "answer 필드 값과 정답 보기(is_correct=true)의 텍스트가 일치하지 않음" };
+    }
+
+    if (/[1-4①-④]\s*번|보기\s*[1-4]|오답\s*[1-4A-C가-다]/.test(quiz.explanation.string)) {
+  return { valid: false, reason: "해설에 보기 번호 참조가 있음" };
+    }
+
     return { valid: true };
   },
 
+  // 2단계: 블라인드 솔버 검증
   async validateBlindSolver(quiz, article, refContent) {
-    Logger.info("BLIND_SOLVE", "블라인드 솔버 검증(수험생 페르소나 채점) 시작");
     try {
-      const prompt = PROMPTS.blindSolve(quiz, article?.content || "", refContent);
+      const articleContext = String(article?.content || "").trim();
+      const refContent = String(article.referencedContent || "").trim();
+      const prompt = PROMPTS.blindSolve(quiz, articleContext, refContent);
       const res = await this.requestMistral(prompt, "high");
+
       const chosenNumber = Number(res?.chosen_number);
-      
       if (!chosenNumber || chosenNumber < 1 || chosenNumber > 4) {
-        Logger.warn("BLIND_SOLVE", `블라인드 솔버 응답 오류 (선택된 보기 번호: ${chosenNumber})`);
-        return { valid: false, reason: "솔버 응답 오류" };
+        return { valid: false, reason: "블라인드 솔버 응답 파싱 실패 (유효하지 않은 보기 번호)" };
       }
 
-      const isCorrect = quiz.options[chosenNumber - 1]?.is_correct === true;
-      if (isCorrect) {
-        Logger.success("BLIND_SOLVE", `블라인드 솔버 검증 통과 (솔버 선택: ${chosenNumber}번, 정답 일치)`);
-      } else {
-        Logger.warn("BLIND_SOLVE", `블라인드 솔버 검증 실패 (솔버 선택: ${chosenNumber}번은 오답임)`);
-      }
-      return { valid: isCorrect, reason: "정답 일치 여부" };
+      const selectedOption = quiz.options[chosenNumber - 1];
+      const isMatch = selectedOption?.is_correct === true;
+
+      return {
+        valid: isMatch,
+        reason: isMatch
+          ? `블라인드 솔버 풀이 성공 (${chosenNumber}번 정답 선택)`
+          : `블라인드 솔버 답안 불일치 (솔버 선택: ${chosenNumber}번 "${selectedOption?.text}" vs 출제 정답: "${quiz.answer}")`,
+      };
     } catch (err) {
-      Logger.error("BLIND_SOLVE", "블라인드 솔버 실행 중 예외 발생", err);
-      return { valid: false, reason: err.message };
+      console.error("블라인드 솔버 실행 오류:", err.message);
+      return { valid: false, reason: `블라인드 솔버 실행 실패: ${err.message}` };
     }
   },
 
+  // 3단계: 자동 수정 (2단계 실패 시 호출)
+  async fixQuiz(quiz, article, errorReason) {
+    const prompt = PROMPTS.correction(quiz, article, errorReason);
+    try {
+      const rawQuiz = await this.requestMistral(prompt, "xhigh");
+      return Utils.normalizeQuiz(rawQuiz);
+    } catch (err) {
+      console.error("자동 수정 API 오류:", err.message);
+      return null;
+    }
+  },
+
+  // 3단계 통합 검증 실행기
+  async runValidationPipeline(quiz, article, refContent) {
+    const step1 = this.validateRequiredFields(quiz);
+    if (!step1.valid) {
+      console.warn(`  └ [1단계 실패] ${step1.reason}`);
+      return { valid: false, step: 1, reason: step1.reason, quiz };
+    }
+    console.log("  └ [1단계 통과] 필수 필드 검증 성공");
+
+    const step2 = await this.validateBlindSolver(quiz, article, refContent);
+    if (!step2.valid) {
+      console.warn(`  └ [2단계 실패] ${step2.reason}`);
+      console.log("  └ [3단계 진입] 2단계 실패에 따른 퀴즈 자동 수정 시도 중...");
+      
+      const correctedQuiz = await this.fixQuiz(quiz, article, step2.reason);
+      if (!correctedQuiz) {
+        return { valid: false, step: 3, reason: "자동 수정 생성 실패", quiz };
+      }
+      
+      console.log("  └ [3단계 통과] 자동 수정 완료. 수정된 퀴즈로 재검증 실시...");
+      
+      // 재검증
+      const reStep1 = this.validateRequiredFields(correctedQuiz);
+      if (!reStep1.valid) return { valid: false, step: 1, reason: `재검증 필수 필드 실패: ${reStep1.reason}`, quiz: correctedQuiz };
+      
+      const reStep2 = await this.validateBlindSolver(correctedQuiz, article, refContent);
+      if (!reStep2.valid) return { valid: false, step: 2, reason: `재검증 블라인드 솔버 실패: ${reStep2.reason}`, quiz: correctedQuiz };
+      
+      console.log("  └ [재검증 통과] 수정된 퀴즈 정답 논리 일치 확인");
+      return { valid: true, reason: "자동 수정 후 검증 통과", quiz: correctedQuiz };
+    }
+    
+    console.log("  └ [2단계 통과] 블라인드 솔버 일치 확인");
+    return { valid: true, reason: "초기 검증 파이프라인 통과", quiz };
+  },
+
   async generateValidQuizSlot(slotIndex, maxTries = 2) {
-    Logger.info("SLOT_GEN", `--- 퀴즈 슬롯 #${slotIndex} 생성 파이프라인 시작 ---`);
     for (let attempt = 1; attempt <= maxTries; attempt++) {
-      Logger.info("SLOT_GEN", `시도 횟수: ${attempt}/${maxTries} (슬롯 #${slotIndex})`);
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
-      const article = await LawService.fetchRandomArticle(law);
-      if (!article) continue;
+const article = await LawService.fetchRandomArticle(law);
+if (!article) continue;
+
+const refContent = article.referencedContent ?? "";
+      console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
-      if (!quiz) continue;
-
-      const step1 = this.validateRequiredFields(quiz);
-      if (!step1.valid) continue;
-
-      const step2 = await this.validateBlindSolver(quiz, article, article.referencedContent);
-      if (step2.valid) {
-        Logger.success("SLOT_GEN", `슬롯 #${slotIndex} 검증 완료된 최종 퀴즈 확보 성공!`);
-        return quiz;
+      if (!quiz) {
+        console.warn(`[슬롯 ${slotIndex}] 퀴즈 생성 실패`);
+        continue;
       }
-      Logger.warn("SLOT_GEN", `슬롯 #${slotIndex} 블라인드 솔버 검증 탈락, 재시도 진행`);
+
+      const result = await this.runValidationPipeline(quiz, article, refContent);
+      if (result.valid) {
+        console.log(`[슬롯 ${slotIndex}] 최종 검증 성공 (시도 ${attempt})`);
+        return result.quiz;
+      }
     }
-    Logger.error("SLOT_GEN", `슬롯 #${slotIndex} 퀴즈 생성 최종 실패 (최대 시도 횟수 초과)`);
+    console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증 시도 실패`);
     return null;
   }
 };
 
 // ============================================================================
-// 6. API 라우팅
+// 6. API 라우팅 (API Routes)
 // ============================================================================
 app.get("/api/lawquizzes/latest", async (req, res) => {
-  Logger.info("ROUTE", "GET /api/lawquizzes/latest 요청 수신");
   try {
     const snapshot = await db.collection("law_quizzes").orderBy("createdAt", "desc").limit(1).get();
-    if (snapshot.empty) {
-      Logger.warn("ROUTE", "저장된 최신 퀴즈 셋이 존재하지 않음");
-      return res.json([]);
-    }
+    if (snapshot.empty) return res.json([]);
+    
     const data = snapshot.docs[0].data();
-    const quizzes = Array.isArray(data.quizzes) ? data.quizzes : Object.values(data.quizzes);
-    Logger.success("ROUTE", `최신 퀴즈 조회 성공 (총 ${quizzes.length}개 항목)`);
+    const quizzes = Array.isArray(data.quizzes) ? data.quizzes : (data.quizzes ? Object.values(data.quizzes) : []);
     return res.json(quizzes);
   } catch (err) {
-    Logger.error("ROUTE", "최신 퀴즈 조회 중 DB 오류 발생", err);
+    console.error("최신 퀴즈 조회 오류:", err);
     return res.status(500).json({ error: err.message, serverError: true });
   }
 });
 
 app.post("/api/lawquizzes/new", async (req, res) => {
-  Logger.info("ROUTE", "POST /api/lawquizzes/new (새로운 퀴즈 생성 요청) 수신");
   try {
+    console.log("== 청크 병렬 그룹 퀴즈 세트 생성 및 3단계 검증 시작 ===");
     const slots = [1, 2, 3];
     const newQuizzes = [];
     
+    // 2개씩 묶어서 병렬 처리 (순차의 느린 속도 + 전체 동시 병렬의 API 부하 및 타임아웃 동시 해결)
     for (let i = 0; i < slots.length; i += 2) {
       const chunk = slots.slice(i, i + 2);
-      Logger.info("ROUTE", `병렬 퀴즈 슬롯 처리 중... 대상 슬롯: [${chunk.join(", ")}]`);
-      const results = await Promise.all(chunk.map((idx) => QuizService.generateValidQuizSlot(idx)));
+      const chunkPromises = chunk.map((index) => QuizService.generateValidQuizSlot(index));
+      const results = await Promise.all(chunkPromises);
       newQuizzes.push(...results.filter(Boolean));
     }
+    
+    console.log(`=== 퀴즈 세트 생성 완료: ${newQuizzes.length}/3 ===`);
 
     if (newQuizzes.length === 0) {
-      Logger.error("ROUTE", "모든 슬롯에서 퀴즈 생성 실패");
-      return res.status(500).json({ error: "퀴즈 생성 실패", serverError: true });
+      return res.status(500).json({ 
+        error: "퀴즈 생성 실패", 
+        message: "퀴즈 생성 및 검증 시도가 모두 실패했습니다.", 
+        serverError: true 
+      });
     }
 
     const quizSetId = String(Date.now());
     await db.collection("law_quizzes").doc(quizSetId).set({ createdAt: Date.now(), quizzes: newQuizzes });
-    Logger.success("ROUTE", `새로운 퀴즈 셋 Firestore 저장 완료 (ID: ${quizSetId}, 생성된 퀴즈 수: ${newQuizzes.length})`);
+    console.log("Firestore 저장 완료:", quizSetId);
+    
     return res.json(newQuizzes);
   } catch (err) {
-    Logger.error("ROUTE", "퀴즈 생성 엔드포인트 처리 중 예외 발생", err);
-    return res.status(500).json({ error: err?.message, serverError: true });
+    console.error("퀴즈 세트 생성 중 오류 발생:", err);
+    return res.status(500).json({ 
+      error: "퀴즈 생성 오류", 
+      message: err?.message || "알 수 없는 오류", 
+      serverError: true 
+    });
   }
 });
 
 app.get("/api/mistral-models", async (req, res) => {
-  Logger.info("ROUTE", "GET /api/mistral-models 요청 수신");
   try {
     const response = await axios.get("[https://api.mistral.ai/v1/models](https://api.mistral.ai/v1/models)", {
       headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
     });
-    const models = response.data?.data?.map(m => m.id) || [];
-    Logger.success("ROUTE", `Mistral 모델 목록 조회 성공 (총 ${models.length}개 모델)`);
+    const models = Array.isArray(response.data?.data) ? response.data.data.map(model => model.id).filter(Boolean) : [];
     return res.json({ models });
   } catch (err) {
-    Logger.error("ROUTE", "Mistral 모델 목록 조회 실패", err);
-    return res.status(500).json({ error: "조회 실패", serverError: true });
+    console.error("Mistral 모델 목록 조회 오류:", err.message);
+    return res.status(err?.response?.status || 500).json({ error: "Mistral 모델 목록 조회 실패", message: err?.response?.data?.message || err.message, serverError: true });
   }
+});
+
+app.get("/api/debug-ref", async (req, res) => {
+  const map = await getLawArticleMap(req.query.lawId || "001638"); // 도로교통법
+  const arts = [...map.values()];
+  const sample = arts.find((a) => /「[^」]+」\s*제\s*\d+\s*조/.test(a.content));
+  res.json({
+    articleCount: arts.length,
+    hasBracketRef: !!sample,
+    sample: sample && { num: sample.num, text: sample.content.slice(0, 300), refs: extractReferences(sample.content) },
+    lawIdOfXingbeop: await getLawIdByName("형법"),
+  });
+});
+
+app.get("/api/debug-search", async (req, res) => {
+  try {
+    const r = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
+      params: { OC: OC_USER_ID, target: "law", type: "JSON", query: req.query.q || "형법" },
+    });
+    res.json({ status: r.status, data: JSON.stringify(r.data).slice(0, 800) });
+  } catch (e) {
+    res.json({ error: e.message, status: e.response?.status, data: String(e.response?.data).slice(0, 500) });
+  }
+});
+
+app.get("/api/debug-ext", async (req, res) => {
+  const name = req.query.name || "자동차관리법";
+  const id = await getLawIdByName(name);
+  const map = id ? await getLawArticleMap(id) : new Map();
+  const art = map.get(req.query.art || "제3조");
+  res.json({ name, id, articleCount: map.size, artHead: art?.content?.slice(0, 150) ?? null });
+});
+
+app.get("/api/debug-collect", async (req, res) => {
+  const lawId = req.query.lawId || "001638";
+  const art = req.query.art || "제2조";
+  const ref = await LawService.collectReferences(lawId, { num: art, lawName: "" });
+  res.json({ art, length: ref.length, heads: ref.match(/^\[[^\]]+\]/gm) });
 });
 
 app.use(express.static(path.join(__dirname, "..")));
