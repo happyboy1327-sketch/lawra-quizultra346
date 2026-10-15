@@ -242,18 +242,17 @@ function extractReferences(content) {
   const external = [];
   let lastLaw = null;
   const cleanContent = content.replace(
-    /(?:「([^」]+)」|(같은\s*법)|([가-힣]+법))\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
-    (m, bracket, same, plain, art) => {
-      const articleNum = art.replace(/\s+/g, "");
+    new RegExp(String.raw`(?:「([^」]+)」|(같은\s*법)|([가-힣]+법))\s*(${PATH_FROM_ART}(?:\s*${CONN}\s*${PATH_ANY})*)`, "g"),
+    (m, bracket, same, plain, chain) => {
       if (same) {
         if (!lastLaw) return m; // 앞에 타법이 없으면 자기 법 참조로 둠
-        external.push({ lawName: lastLaw, articleNum });
-        return "";
+        } else {
+        lastLaw = (bracket || plain).replace(/\s+/g, " ").trim();
       }
-      lastLaw = (bracket || plain).replace(/\s+/g, " ").trim();
-      external.push({ lawName: lastLaw, articleNum });
-      return "";
-    }
+      for (const a of chain.matchAll(new RegExp(CITE_PARTS.art, "g"))) {
+        external.push({ lawName: lastLaw, articleNum: a[0].replace(/\s+/g, "") });
+       }
+     return "";
   );
 
   const internal = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)]
@@ -403,6 +402,114 @@ const LawParser = {
   }
 };
 
+// ===== 조·항·호·목 단위 인용 인식 =====
+ const CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟";
+ const CITE_PARTS = {
+  art: String.raw`제\s*\d+\s*조(?:\s*의\s*\d+)?`,
+  hang: String.raw`제\s*\d+\s*항(?:\s*의\s*\d+)?`,
+  ho: String.raw`제\s*\d+\s*호(?:\s*의\s*\d+)?`,
+  mok: String.raw`[가-하]\s*목(?=[에을를의은는이가과와도로\s,.)·]|$)`,
+ };
+ // 연결어: 제1항 및 제2항 / 제1항, 제2항 또는 제3항 / 제1호부터 제3호까지
+ const CONN = String.raw`(?:및|또는|과|와|이나|부터|[,·ㆍ、])`;
+ // 조로 시작하는 경로 / 조·항·호·목 중 하나라도 있는 경로
+ const PATH_FROM_ART = String.raw`${CITE_PARTS.art}(?:\s*${CITE_PARTS.hang})?(?:\s*${CITE_PARTS.ho})?(?:\s*${CITE_PARTS.mok})?`;
+ const PATH_ANY = String.raw`(?:${PATH_FROM_ART}|${CITE_PARTS.hang}(?:\s*${CITE_PARTS.ho})?(?:\s*${CITE_PARTS.mok})?|${CITE_PARTS.ho}(?:\s*${CITE_PARTS.mok})?|${CITE_PARTS.mok})`;
+ // 타법 인용 + 연결어로 이어진 나머지 (「민법」 제750조제1항 및 제2항, 제751조)
+ const EXTERNAL_SRC = String.raw`(?:「[^」]+」|같은\s*법|[가-힣]+법)\s*${PATH_FROM_ART}(?:\s*${CONN}\s*${PATH_ANY})*`;
+ const noSpace = (s) => (s ? s.replace(/\s+/g, "") : null);
+
+ function hangLabelOf(hangText) {
+  const m = String(hangText || "").match(/^\s*([①-⑳㉑-㉟])(?:\s*의\s*(\d+))?/);
+  return m ? `제${CIRCLED.indexOf(m[1]) + 1}항${m[2] ? `의${m[2]}` : ""}` : null;
+ }
+
+ // 한 조문의 각 항/호/목에서 "제N조 제C항 제H호 가목에 따라", "제C항 및 제D항의" 같은 내부 인용을 찾는다.
+ // 반환: [{ fromHang, fromHo, fromMok, toLabel, snippet }]
+ function extractClauseCitations(parsed) {
+  const hangs = parsed?.hang?.length ? parsed.hang : [parsed?.content || ""];
+  const out = [];
+  let lastLaw = false;
+
+  const { art, hang, ho, mok } = CITE_PARTS;
+  const EXTERNAL = new RegExp(EXTERNAL_SRC, "g");
+  // (이 조|같은 항 …)? (제N조의M)? (제C항)? (제H호)? (가목)?
+  const CITE = new RegExp(
+    String.raw`(?:(?:이|같은)\s*(?:조|항|호)\s*)?(?<art>${art})?\s*(?<hang>${hang})?\s*(?<ho>${ho})?\s*(?<mok>${mok})?`, "g");
+  const GAP = new RegExp(String.raw`^\s*${CONN}\s*$`);
+
+  for (const hangText of hangs) {
+    const fromHang = hangLabelOf(hangText);
+    let fromHo = null;
+    let fromMok = null;
+
+    for (const raw of String(hangText).split("\n")) {
+      // 현재 줄이 속한 호/목 파악 (파서 들여쓰기: 호 2칸, 목 4칸)
+      let m4, m2;
+      if ((m4 = raw.match(/^ {4}([가-하])\./))) fromMok = `${m4[1]}목`;
+      else if ((m2 = raw.match(/^ {2}(\d+)(?:\s*의\s*(\d+))?\./))) { fromHo = `제${m2[1]}호${m2[2] ? `의${m2[2]}` : ""}`; fromMok = null; }
+      else if (!/^\s/.test(raw)) { fromHo = null; fromMok = null; }
+
+      // 타법 인용(연결어로 이어진 것까지)은 같은 길이 공백으로 지워서 내부 인용과 섞이지 않게 한다
+      const text = raw.replace(EXTERNAL, (m) => {
+        if (/^같은\s*법/.test(m) && !lastLaw) return m; // 앞에 타법이 없으면 자기 법
+        lastLaw = true;
+        return " ".repeat(m.length);
+      });
+
+      let prev = null; // 같은 연결 묶음(및/또는/,)의 직전 인용
+      for (const m of text.matchAll(CITE)) {
+        const g = m.groups;
+        let tArt = noSpace(g.art), tHang = noSpace(g.hang), tHo = noSpace(g.ho), tMok = noSpace(g.mok);
+        if (!tArt && !tHang && !tHo && !tMok) continue;
+
+        // "제5조제1항 및 제2항" → 제2항은 제5조 소속, "제1호 및 제2호" → 직전 항 소속
+        if (prev && GAP.test(text.slice(prev.end, m.index))) {
+          if (!tArt && prev.art) tArt = prev.art;
+          if (!tHang && tHo && prev.hang) tHang = prev.hang;
+          if (!tHo && tMok && prev.ho) tHo = prev.ho;
+        }
+        prev = { art: tArt, hang: tHang, ho: tHo, end: m.index + m[0].length };
+
+        if (tArt === parsed?.num && !tHang && !tHo && !tMok) continue; // 머리글(자기 조문번호) 제외
+        if (!tArt) { // 자기 자신 위치를 가리키는 경우 제외
+          const sameHang = (tHang || fromHang) === fromHang;
+          const sameHo = (tHo ?? (tHang ? null : (tMok ? fromHo : null))) === fromHo;
+          const sameMok = (tMok ?? null) === fromMok;
+          if (sameHang && sameHo && sameMok) continue;
+        }
+
+        const base = tArt || (tHang ? "같은 조" : tHo ? "같은 항" : "같은 호");
+        const toLabel = [base, tHang, tHo, tMok].filter(Boolean).join(" ");
+        const start = Math.max(0, m.index - 12);
+        const end = Math.min(raw.length, m.index + m[0].length + 14);
+        out.push({ fromHang, fromHo, fromMok, toLabel, snippet: raw.slice(start, end).replace(/\s+/g, " ").trim() });
+      }
+    }
+  }
+  return out;
+ }
+
+ // 수집된 조문들(Map: key -> parsed)에서 인용 관계 목록 만들기
+ function buildCitationNotes(collected, mainLawName, maxLines = 60) {
+  const lines = [];
+  const seen = new Set();
+
+  for (const art of collected.values()) {
+    const lawPrefix = art.lawName && art.lawName !== mainLawName ? `[${art.lawName}] ` : "";
+    for (const c of extractClauseCitations(art)) {
+      const from = [`${lawPrefix}${art.num}`, c.fromHang, c.fromHo, c.fromMok].filter(Boolean).join(" ");
+      const key = `${from}>${c.toLabel}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`- ${from} → ${c.toLabel} 인용 (원문: "...${c.snippet}...")`);
+      if (lines.length >= maxLines) return lines.join("\n");
+    }
+  }
+  return lines.join("\n");
+ }
+
+
 const LawService = {
   async fetchLawArticles(lawId) {
     if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
@@ -416,7 +523,7 @@ const LawService = {
   },
 
   // 뽑힌 조문 1개에 대해서만 참조 조문 수집
-  async collectReferences(lawId, parsed) {
+  async collectReferences(lawId, parsed, out = {}) {
     const visited = new Set();
     const collected = new Map();
 
@@ -453,6 +560,7 @@ const LawService = {
 
     const selfKey = `${lawId}_${parsed.num}`;
     await collectArticle(lawId, parsed.num);
+    out.notes = buildCitationNotes(collected, parsed.lawName);
 
     return Array.from(collected.entries())
       .filter(([k]) => k !== selfKey)
@@ -466,8 +574,9 @@ const LawService = {
     if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
 
     const picked = validArticles[Math.floor(Math.random() * validArticles.length)];
-    const referencedContent = await this.collectReferences(law.lawId, picked);
-    return { ...picked, referencedContent };
+    const out = {};
+    const referencedContent = await this.collectReferences(law.lawId, picked, out);
+    return { ...picked, referencedContent, citationNotes: out.notes || "" };
   }
 };
 
@@ -496,6 +605,7 @@ const PROMPTS = {
 ${content}
 
 ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
+${article.citationNotes ? `[조문 내 인용 관계]\n${article.citationNotes}\n` : ""}
 위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. **절대로 절대로 할루시네이션 엄금합니다.**
 ■ [핵심 작성 및 시점 검증 규칙]
 1. **타임라인 및 사실관계 논리 완전성 (최우선)**
@@ -530,7 +640,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
    □ ***문제에 언급되지 않은 제3자(예: 문제에 없던 B씨, B상회 등)가 해설에 어느 곳이라도 갑자기 등장하면 Boolean을 false 처리하세요.***
    □ ***논리적 정합성이 일관되게 드러나야 한다. 조금이라도 논리가 어긋나는 문장이 드러나 있다면, Boolean을 false 처리하세요.***
    □ ****선택지 내 키워드와 전혀 무관한 조항이 해설 내에 제시되었다면 Boolean을 false 처리하세요. 공표된 저작물 조항은 저작권법 제 40조, 제53조 등과는 관련없습니다.****
-   □ *****"제N조 C항에 따라", "제N조 C항의" 같은 문구가 들어간 조항(제M조 A항)은 그 인용조항을 직접 언급하여 주시기 바랍니다.*****
+   □ *****[조문 내 인용 관계]에 나열된 "제N조 제C항에 따라", "제N조 제C항의" 같은 인용 문구가 들어간 조항(제M조 제A항)과 인용된 조항(제N조 제C항)이 문제·정답·오답과 관련되면, 해설에서 두 조항을 모두 직접 언급하여 "제M조 제A항은 제N조 제C항에 따라 ~해야 한다/~할 수 있다고 규정되어 있습니다." 형태로 서술하시오. 인용 관계에 호·목이 있으면(예: 제M조 제A항 제B호 가목, 제N조의2 제C항 제H호 나목) 호·목과 가지번호(의2 등)까지 그대로 정확히 언급하시오. 항번호가 없는 조문은 항을 생략하고 조문명만 언급하시오.*****
    □ 날짜 계산이 틀리거나 시점(집행 시작/종료, 변제 시작 등) 서술 간 앞뒤 모순이 생기면 Boolean을 false 처리하세요.
    □ 문제에 명시하지 않은 날짜/조건을 전제로 해설에서 언급되었다고 거짓말하면 Boolean을 false 처리하세요.
    □ 문제에 명시되지 않은 인물의 상황이 해설에 언급되어 있다면 Boolean을 false 처리하세요.
@@ -609,6 +719,7 @@ ${quiz.question}
 [원문 조문]
 ${article.content}
 ${article.referencedContent ? `\n[참조 조문]\n${article.referencedContent}` : ''}
+${article.citationNotes ? `\n[조문 내 인용 관계]\n${article.citationNotes}` : ''}
 
 [오류 사유]
 ${errorReason}
@@ -630,6 +741,7 @@ ${JSON.stringify(quiz, null, 2)}
 10. 질문이 언급되지 않은 인물이 해설 내에 어디라도 엉뚱히 있을 경우, 해당 내용을 제거하시오.
 11. 해설에서 보기를 가리킬 때 "1번", "①", "오답 1", "오답 가" 같은 번호 표현을 쓰지 말고, 보기 내용을 직접 요약언급하시오.
 12. 질문에서 의도하는 주체가 불일치하다면, 반드시 질문을 시정하여 고치시오.
+13. [조문 내 인용 관계]의 인용 문구가 해설과 관련되면 "제M조 제A항은 제N조 제C항에 따라 ~해야 한다/~할 수 있다고 규정되어 있습니다." 형태로 인용하는 조항과 인용된 조항을 모두 직접 언급하고, 호·목·가지번호(의2 등)가 있으면 그대로 정확히 언급하시오.
 
 `
 };
