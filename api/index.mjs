@@ -148,7 +148,9 @@ const Utils = {
     };
 
     normalized.explanation.string = this.remapOptionRefs(normalized.explanation.string, noMap)
-       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
+       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "")
+       .replace(/^\s*\해설의 Boolean은 true이다.\s*/g, "")
+       .trim();
 
     return normalized;
   }
