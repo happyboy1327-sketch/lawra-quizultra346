@@ -10,12 +10,23 @@ import axios from "axios";
 dotenv.config();
 
 // ============================================================================
+// 0. 체계적인 로깅 유틸리티 (Logger Utility)
+// ============================================================================
+const Logger = {
+  timestamp: () => new Date().toISOString(),
+  info: (tag, msg, data = "") => console.log(`[${Logger.timestamp()}] [INFO] [${tag}] ${msg}`, data !== "" ? data : ""),
+  success: (tag, msg, data = "") => console.log(`[${Logger.timestamp()}] [SUCCESS] [${tag}] ${msg}`, data !== "" ? data : ""),
+  warn: (tag, msg, data = "") => console.warn(`[${Logger.timestamp()}] [WARN] [${tag}] ${msg}`, data !== "" ? data : ""),
+  error: (tag, msg, err = "") => console.error(`[${Logger.timestamp()}] [ERROR] [${tag}] ${msg}`, err?.message || err, err?.stack || "")
+};
+
+// ============================================================================
 // 1. 설정 및 초기화 (Configuration & Init)
 // ============================================================================
-console.log("=== 서버 시작 시 환경 변수 확인 ===");
-console.log("LAW_GOV_OC:", process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : "없음");
-console.log("LAW_QUIZ_MISTRAL_KEY:", process.env.LAW_QUIZ_MISTRAL_KEY ? "존재" : "없음");
-console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음");
+Logger.info("INIT", "=== 서버 환경 변수 및 설정 로드 시작 ===");
+Logger.info("INIT", `LAW_GOV_OC: ${process.env.LAW_GOV_OC ? `존재 (${process.env.LAW_GOV_OC.substring(0, 5)}...)` : "없음 (필수)"}`);
+Logger.info("INIT", `LAW_QUIZ_MISTRAL_KEY: ${process.env.LAW_QUIZ_MISTRAL_KEY ? "존재" : "없음 (필수)"}`);
+Logger.info("INIT", `FIREBASE_SERVICE_ACCOUNT_KEY: ${process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음 (필수)"}`);
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = 'ministral-14b-2512';
@@ -38,6 +49,16 @@ const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
 const app = express();
 app.use(express.json());
 
+// HTTP 요청 로깅 미들웨어
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    Logger.info("HTTP", `${req.method} ${req.originalUrl} -> 상태코드: ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -46,17 +67,18 @@ let initializationError = null;
 
 try {
   const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY 환경 변수 없음");
+  if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY 환경 변수가 설정되지 않았습니다.");
   
   db = getFirestore(initializeApp({ credential: cert(JSON.parse(rawKey.trim())) }));
-  console.log("Firebase Admin SDK 초기화 성공");
+  Logger.success("FIREBASE", "Firebase Admin SDK 초기화 성공");
 } catch (err) {
-  console.error("Firebase Admin SDK 초기화 실패:", err.message);
+  Logger.error("FIREBASE", "Firebase Admin SDK 초기화 실패", err);
   initializationError = `Firebase Admin 초기화 실패: ${err.message}`;
 }
 
 app.use((req, res, next) => {
   if (!db) {
+    Logger.error("DB_CHECK", "데이터베이스 미연결 상태로 요청 차단됨");
     return res.status(500).json({ error: "DB 연결 실패", message: initializationError, serverError: true });
   }
   next();
@@ -70,7 +92,9 @@ const Utils = {
 
   isRateLimitError: (error) => {
     const status = error?.statusCode || error?.status || error?.response?.status;
-    return status === 429 || /429|rate.?limit/i.test(error?.message || "");
+    const isRate = status === 429 || /429|rate.?limit/i.test(error?.message || "");
+    if (isRate) Logger.warn("RATE_LIMIT", "Mistral API Rate Limit 감지됨");
+    return isRate;
   },
 
   normalizeText: function (value) {
@@ -85,7 +109,10 @@ const Utils = {
   },
 
   normalizeQuiz: function (quiz) {
-    if (!quiz || typeof quiz !== "object") return null;
+    if (!quiz || typeof quiz !== "object") {
+      Logger.warn("NORMALIZE", "정규화 대상 퀴즈 데이터가 유효하지 않음", quiz);
+      return null;
+    }
 
     const explanation = (() => {
       const rawExpl = quiz.explanation;
@@ -168,6 +195,7 @@ async function getLawIdByName(lawName) {
   const found = (id) => {
     if (!id) return null;
     lawIdCache.set(key, String(id));
+    Logger.info("LAW_CACHE", `법령명 매핑 완료: ${lawName} -> ID ${id}`);
     return String(id);
   };
 
@@ -186,7 +214,7 @@ async function getLawIdByName(lawName) {
     }
     if (abbrHit?.["법령ID"]) return found(abbrHit["법령ID"]);
   } catch (err) {
-    console.warn(`[lawSearch 실패] ${lawName}:`, err.message);
+    Logger.warn("LAW_SEARCH", `lawSearch API 호출 실패 (${lawName}):`, err.message);
   }
 
   try {
@@ -196,7 +224,7 @@ async function getLawIdByName(lawName) {
     const id = data?.["법령"]?.["기본정보"]?.["법령ID"];
     if (id) return found(id);
   } catch (err) {
-    console.warn(`[LM 조회 실패] ${lawName}:`, err.message);
+    Logger.warn("LAW_LM", `LM 파라미터 조회 실패 (${lawName}):`, err.message);
   }
   return null;
 }
@@ -205,12 +233,16 @@ async function getLawArticleMap(lawId) {
   if (lawArticlesCache.has(lawId)) return lawArticlesCache.get(lawId);
 
   try {
+    Logger.info("LAW_FETCH", `법령 전문 API 호출 중 (ID: ${lawId})`);
     const { data } = await axios.get(LAW_API_URL, {
       params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
     });
 
     const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
-    if (!joData) return new Map();
+    if (!joData) {
+      Logger.warn("LAW_FETCH", `조문 데이터가 존재하지 않음 (ID: ${lawId})`);
+      return new Map();
+    }
 
     const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
     const articleMap = new Map();
@@ -221,24 +253,21 @@ async function getLawArticleMap(lawId) {
     });
 
     lawArticlesCache.set(lawId, articleMap);
+    Logger.success("LAW_FETCH", `법령 조문 맵 로드 성공: [${lawName}] 총 ${articleMap.size}개 조문`);
     return articleMap;
   } catch (err) {
-    console.error(`법령 Map 로드 실패 (ID: ${lawId}):`, err.message);
+    Logger.error("LAW_FETCH", `법령 Map 로드 실패 (ID: ${lawId})`, err);
     return new Map();
   }
 }
 
-// ----------------------------------------------------------------------------
-// [핵심 개선] "제N호부터 제M호까지" / "제N항부터 제M항까지" 범위 자동 전개 함수
-// ----------------------------------------------------------------------------
 function expandCitationRanges(text) {
   if (!text) return text;
-  // 예: 제1호부터 제3호까지 -> 제1호, 제2호, 제3호 모두 포함되도록 전개
   let processed = text;
   const rangeRegex = /제\s*(\d+)\s*(조|항|호)\s*부터\s*제\s*(\d+)\s*(조|항|호)\s*까지/g;
   
   processed = processed.replace(rangeRegex, (match, startNum, startUnit, endNum, endUnit) => {
-    if (startUnit !== endUnit) return match; // 단위가 다르면 패스
+    if (startUnit !== endUnit) return match;
     const start = parseInt(startNum, 10);
     const end = parseInt(endNum, 10);
     if (isNaN(start) || isNaN(end) || start > end || (end - start) > 50) return match;
@@ -260,7 +289,6 @@ function extractReferences(content) {
   const internal = [];
   const external = [];
   
-  // 타법 인용 패턴 매칭
   const lawCitationRegex = /(?:「([^」]+)」|([가-힣]+법))\s*(제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?)/g;
   let match;
   while ((match = lawCitationRegex.exec(expandedContent)) !== null) {
@@ -272,7 +300,6 @@ function extractReferences(content) {
     }
   }
 
-  // 자법 내부 조문 인용 매칭
   const internalRegex = /제\s*(\d+)\s*조(?:의\s*(\d+))?/g;
   while ((match = internalRegex.exec(expandedContent)) !== null) {
     const artStr = `제${match[1]}조${match[2] ? `의${match[2]}` : ""}`;
@@ -500,12 +527,15 @@ function buildCitationNotes(collected, mainLawName, maxLines = 60) {
 
 const LawService = {
   async fetchLawArticles(lawId) {
-    if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
+    if (!OC_USER_ID) {
+      Logger.error("LAW_SERVICE", "LAW_GOV_OC 환경 변수가 설정되지 않았습니다.");
+      return [];
+    }
     try {
       const articleMap = await getLawArticleMap(lawId);
       return Array.from(articleMap.values());
     } catch (err) {
-      console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
+      Logger.error("LAW_SERVICE", `법령 조문 목록 조회 실패 (ID: ${lawId})`, err);
       return [];
     }
   },
@@ -548,6 +578,7 @@ const LawService = {
     await collectArticle(lawId, parsed.num);
     out.notes = buildCitationNotes(collected, parsed.lawName);
 
+    Logger.info("REF_COLLECT", `참조 조문 수집 완료: 총 ${collected.size - 1}개 연계 조문 수집됨`);
     return Array.from(collected.entries())
       .filter(([k]) => k !== selfKey)
       .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
@@ -555,11 +586,16 @@ const LawService = {
   },
 
   async fetchRandomArticle(law) {
+    Logger.info("RANDOM_ARTICLE", `대상 법령 선택됨: ${law.lawName} (ID: ${law.lawId})`);
     const articles = await this.fetchLawArticles(law.lawId);
     const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
-    if (!validArticles.length) return console.warn("사용 가능한 조문 없음:", law.lawName), null;
+    if (!validArticles.length) {
+      Logger.warn("RANDOM_ARTICLE", `유효한 조문이 존재하지 않음: ${law.lawName}`);
+      return null;
+    }
 
     const picked = validArticles[Math.floor(Math.random() * validArticles.length)];
+    Logger.success("RANDOM_ARTICLE", `랜덤 조문 선정됨: ${law.lawName} ${picked.num}`);
     const out = {};
     const referencedContent = await this.collectReferences(law.lawId, picked, out);
     return { ...picked, referencedContent, citationNotes: out.notes || "" };
@@ -630,25 +666,14 @@ ${quiz.question}
 {
   "chosen_number": 1,
   "reason": "[풀이 이유]"
-}`,
-
-  correction: (quiz, article, errorReason) => `
-다음 퀴즈는 검증에서 오류로 실패했습니다. 오류 사유를 반영하여 수정하십시오.
-
-[오류 사유]
-${errorReason}
-
-[기존 퀴즈 데이터]
-${JSON.stringify(quiz, null, 2)}
-
-순수 JSON 형식으로만 출력하십시오.
-`
+}`
 };
 
 // ============================================================================
 // 5. 퀴즈 서비스 및 검증 파이프라인
 // ============================================================================
 function repairJson(s) {
+  Logger.warn("JSON_REPAIR", "손상된 JSON 응답 감지, 복구 로직 실행 중...");
   let out = "";
   let inStr = false;
   for (let i = 0; i < s.length; i++) {
@@ -686,13 +711,18 @@ const QuizService = {
 
     const now = Date.now();
     const wait = this.lastCallAt + MISTRAL_MIN_INTERVAL_MS - now;
-    if (wait > 0) await Utils.sleep(wait);
+    if (wait > 0) {
+      Logger.info("THROTTLE", `API 호출 간격 조절 대기 중: ${wait}ms`);
+      await Utils.sleep(wait);
+    }
     this.lastCallAt = Date.now();
     release();
   },
 
   async requestMistral(prompt, reasoningEffort) {
     await this.throttle();
+    Logger.info("MISTRAL_REQ", `Mistral API 요청 전송 (모델: ${MODEL}, reasoning_effort: ${reasoningEffort})`);
+    
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
@@ -702,27 +732,44 @@ const QuizService = {
     });
     
     let content = response?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") return null;
+    if (typeof content !== "string") {
+      Logger.error("MISTRAL_RES", "Mistral 응답 내용이 문자열이 아님", content);
+      return null;
+    }
+    
     const cleaned = content.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim();
     try {
-      return JSON.parse(cleaned);
-    } catch {
-      return JSON.parse(repairJson(cleaned));
+      const parsed = JSON.parse(cleaned);
+      Logger.success("MISTRAL_RES", "Mistral JSON 응답 파싱 성공");
+      return parsed;
+    } catch (parseErr) {
+      Logger.warn("MISTRAL_RES", "직접 JSON 파싱 실패, 수리(repairJson) 시도", parseErr.message);
+      const repaired = JSON.parse(repairJson(cleaned));
+      Logger.success("MISTRAL_RES", "손상된 JSON 수리 및 파싱 성공");
+      return repaired;
     }
   },
 
   async generateQuiz(article, retriesLeft = 2) {
-    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) return null;
+    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) {
+      Logger.warn("QUIZ_GEN", "유효하지 않은 조문 데이터로 퀴즈 생성 중단됨");
+      return null;
+    }
     
+    Logger.info("QUIZ_GEN", `퀴즈 생성 시작: [${article.lawName} ${article.num}]`);
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
     const prompt = PROMPTS.generate(article, content, refContent);
 
     try {
       const rawQuiz = await this.requestMistral(prompt, "xhigh");
-      return Utils.normalizeQuiz(rawQuiz);
+      const normalized = Utils.normalizeQuiz(rawQuiz);
+      Logger.success("QUIZ_GEN", `퀴즈 생성 및 정규화 완료 (ID: ${normalized?.id})`);
+      return normalized;
     } catch (err) {
+      Logger.error("QUIZ_GEN", `퀴즈 생성 중 오류 발생 (남은 재시도: ${retriesLeft})`, err);
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
+        Logger.info("QUIZ_GEN", "Rate Limit으로 인해 1.5초 후 재시도합니다.");
         await Utils.sleep(1500);
         return this.generateQuiz(article, retriesLeft - 1);
       }
@@ -731,26 +778,55 @@ const QuizService = {
   },
 
   validateRequiredFields(quiz) {
-    if (!quiz || typeof quiz !== "object") return { valid: false, reason: "데이터 없음" };
-    if (!quiz.question || !quiz.answer || !quiz.explanation?.string) return { valid: false, reason: "필수 필드 누락" };
-    if (!Array.isArray(quiz.options) || quiz.options.length !== 4) return { valid: false, reason: "보기 4개 아님" };
+    if (!quiz || typeof quiz !== "object") {
+      Logger.warn("VALIDATE", "검증 실패: 퀴즈 객체가 비어있음");
+      return { valid: false, reason: "데이터 없음" };
+    }
+    if (!quiz.question || !quiz.answer || !quiz.explanation?.string) {
+      Logger.warn("VALIDATE", "검증 실패: 필수 필드(질문, 정답, 해설) 누락됨", {
+        hasQ: !!quiz.question,
+        hasA: !!quiz.answer,
+        hasExp: !!quiz.explanation?.string
+      });
+      return { valid: false, reason: "필수 필드 누락" };
+    }
+    if (!Array.isArray(quiz.options) || quiz.options.length !== 4) {
+      Logger.warn("VALIDATE", `검증 실패: 보기 개수가 4개가 아님 (현재: ${quiz.options?.length})`);
+      return { valid: false, reason: "보기 4개 아님" };
+    }
+    Logger.success("VALIDATE", "필수 필드 검증 통과");
     return { valid: true };
   },
 
   async validateBlindSolver(quiz, article, refContent) {
+    Logger.info("BLIND_SOLVE", "블라인드 솔버 검증(수험생 페르소나 채점) 시작");
     try {
       const prompt = PROMPTS.blindSolve(quiz, article?.content || "", refContent);
       const res = await this.requestMistral(prompt, "high");
       const chosenNumber = Number(res?.chosen_number);
-      if (!chosenNumber || chosenNumber < 1 || chosenNumber > 4) return { valid: false, reason: "솔버 응답 오류" };
-      return { valid: quiz.options[chosenNumber - 1]?.is_correct === true, reason: "정답 일치 여부" };
+      
+      if (!chosenNumber || chosenNumber < 1 || chosenNumber > 4) {
+        Logger.warn("BLIND_SOLVE", `블라인드 솔버 응답 오류 (선택된 보기 번호: ${chosenNumber})`);
+        return { valid: false, reason: "솔버 응답 오류" };
+      }
+
+      const isCorrect = quiz.options[chosenNumber - 1]?.is_correct === true;
+      if (isCorrect) {
+        Logger.success("BLIND_SOLVE", `블라인드 솔버 검증 통과 (솔버 선택: ${chosenNumber}번, 정답 일치)`);
+      } else {
+        Logger.warn("BLIND_SOLVE", `블라인드 솔버 검증 실패 (솔버 선택: ${chosenNumber}번은 오답임)`);
+      }
+      return { valid: isCorrect, reason: "정답 일치 여부" };
     } catch (err) {
+      Logger.error("BLIND_SOLVE", "블라인드 솔버 실행 중 예외 발생", err);
       return { valid: false, reason: err.message };
     }
   },
 
   async generateValidQuizSlot(slotIndex, maxTries = 2) {
+    Logger.info("SLOT_GEN", `--- 퀴즈 슬롯 #${slotIndex} 생성 파이프라인 시작 ---`);
     for (let attempt = 1; attempt <= maxTries; attempt++) {
+      Logger.info("SLOT_GEN", `시도 횟수: ${attempt}/${maxTries} (슬롯 #${slotIndex})`);
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
       const article = await LawService.fetchRandomArticle(law);
       if (!article) continue;
@@ -762,8 +838,13 @@ const QuizService = {
       if (!step1.valid) continue;
 
       const step2 = await this.validateBlindSolver(quiz, article, article.referencedContent);
-      if (step2.valid) return quiz;
+      if (step2.valid) {
+        Logger.success("SLOT_GEN", `슬롯 #${slotIndex} 검증 완료된 최종 퀴즈 확보 성공!`);
+        return quiz;
+      }
+      Logger.warn("SLOT_GEN", `슬롯 #${slotIndex} 블라인드 솔버 검증 탈락, 재시도 진행`);
     }
+    Logger.error("SLOT_GEN", `슬롯 #${slotIndex} 퀴즈 생성 최종 실패 (최대 시도 횟수 초과)`);
     return null;
   }
 };
@@ -772,46 +853,62 @@ const QuizService = {
 // 6. API 라우팅
 // ============================================================================
 app.get("/api/lawquizzes/latest", async (req, res) => {
+  Logger.info("ROUTE", "GET /api/lawquizzes/latest 요청 수신");
   try {
     const snapshot = await db.collection("law_quizzes").orderBy("createdAt", "desc").limit(1).get();
-    if (snapshot.empty) return res.json([]);
+    if (snapshot.empty) {
+      Logger.warn("ROUTE", "저장된 최신 퀴즈 셋이 존재하지 않음");
+      return res.json([]);
+    }
     const data = snapshot.docs[0].data();
-    return res.json(Array.isArray(data.quizzes) ? data.quizzes : Object.values(data.quizzes));
+    const quizzes = Array.isArray(data.quizzes) ? data.quizzes : Object.values(data.quizzes);
+    Logger.success("ROUTE", `최신 퀴즈 조회 성공 (총 ${quizzes.length}개 항목)`);
+    return res.json(quizzes);
   } catch (err) {
+    Logger.error("ROUTE", "최신 퀴즈 조회 중 DB 오류 발생", err);
     return res.status(500).json({ error: err.message, serverError: true });
   }
 });
 
 app.post("/api/lawquizzes/new", async (req, res) => {
+  Logger.info("ROUTE", "POST /api/lawquizzes/new (새로운 퀴즈 생성 요청) 수신");
   try {
     const slots = [1, 2, 3];
     const newQuizzes = [];
     
     for (let i = 0; i < slots.length; i += 2) {
       const chunk = slots.slice(i, i + 2);
+      Logger.info("ROUTE", `병렬 퀴즈 슬롯 처리 중... 대상 슬롯: [${chunk.join(", ")}]`);
       const results = await Promise.all(chunk.map((idx) => QuizService.generateValidQuizSlot(idx)));
       newQuizzes.push(...results.filter(Boolean));
     }
 
     if (newQuizzes.length === 0) {
+      Logger.error("ROUTE", "모든 슬롯에서 퀴즈 생성 실패");
       return res.status(500).json({ error: "퀴즈 생성 실패", serverError: true });
     }
 
     const quizSetId = String(Date.now());
     await db.collection("law_quizzes").doc(quizSetId).set({ createdAt: Date.now(), quizzes: newQuizzes });
+    Logger.success("ROUTE", `새로운 퀴즈 셋 Firestore 저장 완료 (ID: ${quizSetId}, 생성된 퀴즈 수: ${newQuizzes.length})`);
     return res.json(newQuizzes);
   } catch (err) {
+    Logger.error("ROUTE", "퀴즈 생성 엔드포인트 처리 중 예외 발생", err);
     return res.status(500).json({ error: err?.message, serverError: true });
   }
 });
 
 app.get("/api/mistral-models", async (req, res) => {
+  Logger.info("ROUTE", "GET /api/mistral-models 요청 수신");
   try {
     const response = await axios.get("[https://api.mistral.ai/v1/models](https://api.mistral.ai/v1/models)", {
       headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
     });
-    return res.json({ models: response.data?.data?.map(m => m.id) || [] });
+    const models = response.data?.data?.map(m => m.id) || [];
+    Logger.success("ROUTE", `Mistral 모델 목록 조회 성공 (총 ${models.length}개 모델)`);
+    return res.json({ models });
   } catch (err) {
+    Logger.error("ROUTE", "Mistral 모델 목록 조회 실패", err);
     return res.status(500).json({ error: "조회 실패", serverError: true });
   }
 });
