@@ -149,7 +149,7 @@ const Utils = {
 
     normalized.explanation.string = this.remapOptionRefs(normalized.explanation.string, noMap)
        .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "")
-       .replace(/^\s*\해설의 Boolean은 true이다.\s*/g, "")
+       .replace(/해설의 Boolean은 true이다\./g, "")
        .trim();
 
     return normalized;
