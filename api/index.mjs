@@ -252,7 +252,7 @@ function extractReferences(content) {
       for (const a of chain.matchAll(new RegExp(CITE_PARTS.art, "g"))) {
         external.push({ lawName: lastLaw, articleNum: a[0].replace(/\s+/g, "") });
        }
-     return "";
+     return "";}
   );
 
   const internal = [...cleanContent.matchAll(/제\s*(\d+)\s*조(?:의\s*(\d+))?/g)]
