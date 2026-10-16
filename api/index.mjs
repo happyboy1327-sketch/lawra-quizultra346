@@ -169,7 +169,10 @@ const matchedIndex = rawOptions.findIndex(opt => {
     };
 
     normalized.explanation.string = normalized.explanation.string
-       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
+       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "")
+       .replace(/해설의 Boolean은 true이다\./g, "")
+       .replace(/해설의 Boolean은 true로 처리한다\./g, "")
+       .trim();
 
     return normalized;
   }
