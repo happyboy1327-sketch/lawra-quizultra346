@@ -75,6 +75,18 @@ const Utils = {
     }
     return arr;
   },
+  
+ /* calcDate(base, mOffset = 0, dOffset = 0) {
+    const [y, m, d] = String(base).split('-').map(Number);
+    if (!y || !m || !d) return base;
+    const target = new Date(y, m - 1 + mOffset, d + dOffset);
+    
+    const yy = target.getFullYear();
+    const mm = String(target.getMonth() + 1).padStart(2, '0');
+    const dd = String(target.getDate()).padStart(2, '0');
+    
+    return `${yy}-${mm}-${dd}`;
+  },*/
 
   isRateLimitError: (error) => {
     const status = error?.statusCode || error?.status || error?.response?.status;
