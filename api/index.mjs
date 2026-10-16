@@ -64,6 +64,51 @@ app.use((req, res, next) => {
 // ============================================================================
 // 2. 유틸리티 (Utilities)
 // ============================================================================
+
+const Calc = {
+  // 월·년 먼저 더하고 말일 보정(1/31 + 1개월 = 2/28·29), 그다음 일 단위를 더함
+  date(base, y, m, d) {
+    const [by, bm, bd] = String(base).split("-").map(Number);
+    const tm = bm - 1 + m + y * 12;
+    const ty = by + Math.floor(tm / 12), tmon = ((tm % 12) + 12) % 12;
+    const last = new Date(ty, tmon + 1, 0).getDate();
+    const t = new Date(ty, tmon, Math.min(bd, last) + d);
+    return `${t.getFullYear()}년 ${t.getMonth() + 1}월 ${t.getDate()}일`;
+  },
+  // "DATE(2023-05-01, +0y, +12m, +0d)" / "NUM(1000000/20)" → 결과 문자열, 형식 오류면 null
+  run(expr) {
+    const s = String(expr).trim();
+    let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)y,\s*([+-]?\d+)m,\s*([+-]?\d+)d\)$/);
+    if (m) return Calc.date(m[1], +m[2], +m[3], +m[4]);
+    m = s.match(/^NUM\(([\d+\-*/().\s]+)\)$/);          // 숫자와 사칙연산 기호만 허용
+    if (m) {
+      try {
+        const v = Function(`"use strict"; return (${m[1]});`)();
+        return Number.isFinite(v) ? String(Math.round(v * 100) / 100).replace(/\B(?=(\d{3})+(?!\d))/g, ",") : null;
+      } catch { return null; }
+    }
+    return null;
+  },
+};
+
+// {{c1}}, {{c2}} → calcul_check 순서대로 계산한 값으로 치환
+function applyCalc(quiz) {
+  const list = Array.isArray(quiz.calcul_check) ? quiz.calcul_check : [];
+  const vals = list.map(Calc.run);
+  const bad = list.filter((_, i) => vals[i] == null);
+  const sub = (v) => typeof v === "string" ? v.replace(/\{\{c(\d+)\}\}/g, (t, i) => vals[i - 1] ?? t) : v;
+
+  const out = {
+    ...quiz,
+    question: sub(quiz.question), answer: sub(quiz.answer), explanation_answer: sub(quiz.explanation_answer),
+    explanation: { ...quiz.explanation, string: sub(quiz.explanation?.string) },
+    options: (quiz.options || []).map(o => ({ ...o, text: sub(o.text) })),
+  };
+  const left = JSON.stringify(out).match(/\{\{c\d+\}\}/g);
+  out.calcError = bad.length ? `calcul_check 형식 오류: ${bad.join(" / ")}` : left ? `미치환 토큰: ${left.join(",")}` : "";
+  return out;
+  }
+
 const Utils = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 
@@ -126,6 +171,7 @@ const Utils = {
 
   normalizeQuiz: function (quiz) {
     if (!quiz || typeof quiz !== "object") return null;
+    quiz = applyCalc(quiz)
 
     const explanation = (() => {
       const rawExpl = quiz.explanation;
@@ -688,6 +734,7 @@ const LawService = {
 // ============================================================================
 // 4. 프롬프트 정의 (Prompts)
 // ============================================================================
+
 const randomOptionsTemplate = () => {
   const pos = Math.floor(Math.random() * 4);
   const options = [];
@@ -880,6 +927,8 @@ const QuizService = {
     if (correctOptions[0].text.trim() !== quiz.answer.trim()) {
       return { valid: false, reason: "answer 필드 값과 정답 보기(is_correct=true)의 텍스트가 일치하지 않음" };
     }
+
+    if (quiz.calcError) return { valid: false, reason: quiz.calcError };
 
     return { valid: true };
   },
