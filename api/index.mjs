@@ -66,7 +66,6 @@ app.use((req, res, next) => {
 // ============================================================================
 
 const Calc = {
-  // 영업일 가감 계산 (주말 토·일만 제외)
   addBusinessDays(startDate, days) {
     let current = new Date(startDate);
     let absDays = Math.abs(days);
@@ -74,8 +73,7 @@ const Calc = {
 
     while (absDays > 0) {
       current.setDate(current.getDate() + step);
-      const dayOfWeek = current.getDay(); // 0: 일요일, 6: 토요일
-      
+      const dayOfWeek = current.getDay();
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         absDays--;
       }
@@ -83,32 +81,28 @@ const Calc = {
     return current;
   },
 
-  // 월·년 먼저 더하고 말일 보정, 그다음 평일(b) 단위를 더함
-  date(base, y, m, b) {
+  date(base, y, m, val, type) {
     const [by, bm, bd] = String(base).split("-").map(Number);
     const tm = bm - 1 + m + y * 12;
     const ty = by + Math.floor(tm / 12), tmon = ((tm % 12) + 12) % 12;
     const last = new Date(ty, tmon + 1, 0).getDate();
-    
-    // 1. 년, 월 반영 및 말일 보정 적용
     let t = new Date(ty, tmon, Math.min(bd, last));
     
-    // 2. 파라미터로 넘어온 b 영업일수만큼 가감 (주말 제외 루프 실행)
-    if (b !== 0) {
-      t = Calc.addBusinessDays(t, b);
+    if (type === 'B' && val !== 0) {
+      t = Calc.addBusinessDays(t, val);
+    } else if (type === 'd' && val !== 0) {
+      t.setDate(t.getDate() + val);
     }
     
     return `${t.getFullYear()}년 ${t.getMonth() + 1}월 ${t.getDate()}일`;
   },
 
-  // "DATE(기준일YYYY-MM-DD, +0y, +0m, +5B)" 형식을 파싱
   run(expr) {
     const s = String(expr).trim();
-    // 마지막 파라미터가 숫자에 B가 붙은 형태([+-]?\d+)B 인지 체크합니다.
-    let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)y,\s*([+-]?\d+)m,\s*([+-]?\d+)B\)\$/);
-    if (m) return Calc.date(m[1], +m[2], +m[3], +m[4]);
+    let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)y,\s*([+-]?\d+)m,\s*([+-]?\d+)([dB])\)$/);
+    if (m) return Calc.date(m[1], +m[2], +m[3], +m[4], m[5]);
     
-    m = s.match(/^NUM\(([\d+\-*/().\s]+)\)\$/);
+    m = s.match(/^NUM\(([\d+\-*/().\s]+)\)$/);
     if (m) {
       try {
         const v = Function(`"use strict"; return (${m[1]});`)();
