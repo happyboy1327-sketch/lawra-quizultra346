@@ -603,6 +603,20 @@ const LawService = {
 // ============================================================================
 // 4. 프롬프트 정의 (Prompts)
 // ============================================================================
+const randomOptionsTemplate = () => {
+  const pos = Math.floor(Math.random() * 4);
+  const options = [];
+  
+  for (let i = 0; i < 4; i++) {
+    options.push({
+      text: i === pos ? "[정답 내용]" : "[오답 내용]",
+      is_correct: i === pos
+    });
+  }
+  
+  return options.join(",\n    ");
+};
+
 const PROMPTS = {
   generate: (article, content, refContent) => `
 다음 한국 법령 조문 및 참조/인용 조문을 읽고 정답 위치가 다른 객관식 4지선다의 퀴즈 1개를 한국어로만 만드세요. **영어 및 한자는 절대로 단 한글자도 포함하면 안됩니다.**
@@ -642,10 +656,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설, 질문과 100% 일치하는 상황 및 전개, 법률 객체, 주체, 오류 없는 계산]", "Boolean": true},
   "question": "[상황 및 전개, 법률 객체, 주체, 이용한 수단]",
   "options": [
-    {"text": "[정답 내용]", "is_correct": true},
-    {"text": "[오답 1]", "is_correct": false},
-    {"text": "[오답 2]", "is_correct": false},
-    {"text": "[오답 3]", "is_correct": false}
+   ${randomOptionsTemplate()}
   ],
   "answer": "[정답 내용]",
   "timer_sec": 15
