@@ -576,7 +576,6 @@ const LawService = {
     if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
     const article = validArticles[Math.floor(Math.random() * validArticles.length)];
    return { ...article, referencedContent: await this.collectRefs(law, article) };
-   }
   }
 };
 
