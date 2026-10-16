@@ -669,7 +669,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "timer_sec": 15
 }`,
 
-  blindSolve: (quiz, articleContext, refContent) => `
+ blindSolve: (quiz, articleContext, refContent) => `
 당신은 대한민국 법률 시험 수험생입니다. 아래의 [참조 법령] 및 [참조 및 인용 조문 내용]을 바탕으로 [질문]과 [보기]를 읽고 정답을 고르세요. 날짜 계산이 있다면 그것도 정확하게 확인하여 푸시오.
 
 [참조 법령]
