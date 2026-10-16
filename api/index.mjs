@@ -908,7 +908,8 @@ const refContent = article.referencedContent ?? "";
       const result = await this.runValidationPipeline(quiz, article, refContent);
       if (result.valid) {
         console.log(`[슬롯 ${slotIndex}] 최종 검증 성공 (시도 ${attempt})`);
-        return result.quiz;
+        const { explanation_answer, ...clean } = result.quiz;
+        return clean;
       }
     }
     console.warn(`[슬롯 ${slotIndex}] 모든 생성 및 검증 시도 실패`);
