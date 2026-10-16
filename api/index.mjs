@@ -97,10 +97,12 @@ const Calc = {
     return `${t.getFullYear()}년 ${t.getMonth() + 1}월 ${t.getDate()}일`;
   },
 
-  run(expr) {
-    const s = String(expr).trim();
-    let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)y,\s*([+-]?\d+)m,\s*([+-]?\d+)([dB])\)$/);
-    if (m) return Calc.date(m[1], +m[2], +m[3], +m[4], m[5]);
+  // 수정된 run 함수 내부 정규식
+run(expr) {
+  const s = String(expr).trim();
+  // 뒤에 오는 알파벳(y, m 등)에 상관없이 위치(쉼표 기준)로 숫자를 추출합니다.
+  let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)[a-zA-Z]?,\s*([+-]?\d+)[a-zA-Z]?,\s*([+-]?\d+)([dB])\)$/);
+  if (m) return Calc.date(m[1], +m[2], +m[3], +m[4], m[5]);
     
     m = s.match(/^NUM\(([\d+\-*/().\s]+)\)$/);
     if (m) {
