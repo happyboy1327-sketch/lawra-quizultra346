@@ -119,17 +119,18 @@ function applyCalc(quiz) {
   
   const vals = list.map(item => {
     if (typeof item !== 'string') return null;
-    // 등호 기준으로 수식 추출
-    const expr = item.split('=')[0].trim();
+    let expr = item.split('=')[0].trim();
+    
+    // NUM() 안에 숫자가 아닌 법조문이나 텍스트가 들어간 경우 차단
+    if (expr.startsWith('NUM(') && expr.endsWith(')')) {
+      const inner = expr.slice(4, -1).trim();
+      if (!/^[0-9+\-*/().\s]+$/.test(inner)) {
+        return null; // 수식이 아니면 연산 실패 처리
+      }
+    }
     
     try {
-      const res = Calc.run(expr);
-      // Calc.run이 실패했거나, LLM이 우변에 텍스트(= 개정일자 확인 등)를 싸질러서 연산이 안 된 경우 방어
-      if (res == null) {
-        // 우변에 숫자나 날짜 결과값이 제대로 있는지 확인하는 로직 추가 가능
-        return null;
-      }
-      return res;
+      return Calc.run(expr);
     } catch (e) {
       return null;
     }
@@ -819,6 +820,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 해설 작성시 문제에 언급되지 아니한 인물(예: 문제에 언급되지 않은 B씨가 있을 경우)이 있다면 해설의 Boolean에 false 처리하시오.
 □ 실제 시행령, 대통령령이 아니면 해설의 Boolean에 false 처리하시오.
 □ 날짜·금액·비율의 계산 결과는 직접 쓰지 말고 calcul_check에 식으로 적은 뒤, question/options/explanation에는 {{c1}}, {{c2}}(식 순서)로 적어라. 문제에 사실관계로 주어진 날짜는 그대로 써도 된다.
+□ 계산할 수식, 숫자, 날짜가 없으면 calcul_check는 null로 두십시오. **조항번호는 calcul_check식의 NUM에 들어가지 않습니다.**
 □ ********소비자보호법이란 말은 없습니다. 대체 어디서본건지 ㅅㅂ. 소비자보호법같이 실존하지 않는 법령명이 정답 및 해설에 쓰여있으면 해설의 Boolean에 false 처리하시오.********
 □ 해설에 잘못되고 무관한 조항번호와 조항내용이 끼어있으면 해설의 Boolean에 false 처리하시오. 또한, 조항번호와 그 내용이 불일치할시 false 처리하시오.
 □ ******공탁절차 같이 복잡한 내용에 대해 모르겠으면 과감히 해설에서 제외시킵니다. 모르는 지식에 대해 할루시네이션 하지마시오.******
