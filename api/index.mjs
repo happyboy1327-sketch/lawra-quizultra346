@@ -116,16 +116,37 @@ const Calc = {
 // 기존 치환 메커니즘 유지
 function applyCalc(quiz) {
   const list = Array.isArray(quiz.calcul_check) ? quiz.calcul_check : [];
-  const vals = list.map(Calc.run);
+  
+  const vals = list.map(item => {
+    if (typeof item !== 'string') return null;
+    // 등호 기준으로 수식 추출
+    const expr = item.split('=')[0].trim();
+    
+    try {
+      const res = Calc.run(expr);
+      // Calc.run이 실패했거나, LLM이 우변에 텍스트(= 개정일자 확인 등)를 싸질러서 연산이 안 된 경우 방어
+      if (res == null) {
+        // 우변에 숫자나 날짜 결과값이 제대로 있는지 확인하는 로직 추가 가능
+        return null;
+      }
+      return res;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const bad = list.filter((_, i) => vals[i] == null);
   const sub = (v) => typeof v === "string" ? v.replace(/\{\{c(\d+)\}\}/g, (t, i) => vals[i - 1] ?? t) : v;
 
   const out = {
     ...quiz,
-    question: sub(quiz.question), answer: sub(quiz.answer), explanation_answer: sub(quiz.explanation_answer),
+    question: sub(quiz.question), 
+    answer: sub(quiz.answer), 
+    explanation_answer: sub(quiz.explanation_answer),
     explanation: { ...quiz.explanation, string: sub(quiz.explanation?.string) },
     options: (quiz.options || []).map(o => ({ ...o, text: sub(o.text) })),
   };
+  
   const left = JSON.stringify(out).match(/\{\{c\d+\}\}/g);
   out.calcError = bad.length ? `calcul_check 형식 오류: ${bad.join(" / ")}` : left ? `미치환 토큰: ${left.join(",")}` : "";
   return out;
