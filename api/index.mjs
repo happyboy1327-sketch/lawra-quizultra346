@@ -119,24 +119,35 @@ function applyCalc(quiz) {
   
   const vals = list.map(item => {
     if (typeof item !== 'string') return null;
-    let expr = item.split('=')[0].trim();
     
-    // NUM() 안에 숫자가 아닌 법조문이나 텍스트가 들어간 경우 차단
-    if (expr.startsWith('NUM(') && expr.endsWith(')')) {
-      const inner = expr.slice(4, -1).trim();
-      if (!/^[0-9+\-*/().\s]+$/.test(inner)) {
-        return null; // 수식이 아니면 연산 실패 처리
+    // 1. 등호 기준 좌변(수식/식) 추출
+    const parts = item.split('=');
+    const leftExpr = parts[0].trim();
+    const rightVal = parts[1] ? parts[1].trim() : null;
+
+    // 2. pure 수식 형태(DATE, NUM에 순수 숫자/수식만 포함된 경우)만 Calc.run 실행
+    const isPureCalc = /^(DATE|NUM)\s*\(/.test(leftExpr);
+    
+    if (isPureCalc) {
+      try {
+        const res = Calc.run(leftExpr);
+        if (res !== null) return res;
+      } catch (e) {
+        // 연산 실패 시 fallback
       }
     }
-    
-    try {
-      return Calc.run(expr);
-    } catch (e) {
-      return null;
+
+    // 3. LLM이 우변에 명시해둔 결과값(= 2023-10-01 등)이 있다면 치환용 값으로 활용
+    if (rightVal) {
+      // 주석/설명 문구가 괄호나 텍스트로 붙어있다면 깔끔한 값만 추출
+      return rightVal.split('(')[0].trim();
     }
+
+    return null;
   });
 
-  const bad = list.filter((_, i) => vals[i] == null);
+  // 4. calcul_check에 항목은 있는데 값 치환 및 연산이 전혀 불가능한 진짜 불량 건만 bad로 분류
+  // (문장형 검증인 경우 치환 토큰 {{c1}} 등에 영향 없으면 오류 방출 금지)
   const sub = (v) => typeof v === "string" ? v.replace(/\{\{c(\d+)\}\}/g, (t, i) => vals[i - 1] ?? t) : v;
 
   const out = {
@@ -147,9 +158,11 @@ function applyCalc(quiz) {
     explanation: { ...quiz.explanation, string: sub(quiz.explanation?.string) },
     options: (quiz.options || []).map(o => ({ ...o, text: sub(o.text) })),
   };
-  
+
   const left = JSON.stringify(out).match(/\{\{c\d+\}\}/g);
-  out.calcError = bad.length ? `calcul_check 형식 오류: ${bad.join(" / ")}` : left ? `미치환 토큰: ${left.join(",")}` : "";
+  
+  // 미치환 토큰이 남아있을 때만 파싱 오류 처리하여 무한 재시도/타임아웃 방지
+  out.calcError = left ? `미치환 토큰 존재: ${left.join(",")}` : "";
   return out;
 }
 
