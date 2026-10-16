@@ -124,17 +124,38 @@ const Utils = {
 
     // answer와 공백 제외 완전 일치하는 보기가 있을 때만 is_correct 플래그 보정
     const cleanStr = (s) => String(s || "").replace(/\s+/g, "").trim();
-    const targetAnswer = cleanStr(quiz.answer);
-    const matchedIndex = rawOptions.findIndex(opt => cleanStr(opt.text) === targetAnswer);
+const targetAnswer = cleanStr(quiz.answer);
 
-    const fixedRawOptions = matchedIndex !== -1
+// 편집 거리 행렬을 이용한 유사도 계산 함수 (90% 이상 일치)
+const getSimilarity = (s1, s2) => {
+    const longer = s1.length > s2.length ? s1 : s2;
+    if (longer.length === 0) return 1.0;
+    const costs = [];
+    for (let i = 0; i <= s1.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= s2.length; j++) {
+            if (i === 0) {
+                costs[j] = j;
+            } else if (j > 0) {
+                let newValue = costs[j - 1];
+                if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                    newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                }
+                costs[j - 1] = lastValue;
+                lastValue = newValue;
+            }
+        }
+        if (i > 0) costs[s2.length] = lastValue;
+    }
+    return (longer.length - costs[s2.length]) / longer.length;
+};
+
+const matchedIndex = rawOptions.findIndex(opt => {
+    return getSimilarity(cleanStr(opt.text), targetAnswer) >= 0.9;
+});
+    const options = matchedIndex !== -1
       ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
       : rawOptions;
-
-    // 셔플 + 원래 번호 → 새 번호 매핑 (해설 속 "N번" 참조 보정용)
-    const order = this.shuffle(fixedRawOptions.map((_, i) => i)); // order[새 인덱스] = 원래 인덱스
-    const options = order.map(i => fixedRawOptions[i]);
-    const noMap = new Map(order.map((oldIdx, newIdx) => [oldIdx + 1, newIdx + 1]));
 
     const normalized = {
       ...quiz,
@@ -144,16 +165,15 @@ const Utils = {
       question: this.normalizeText(quiz.question),
       answer: this.normalizeText(quiz.answer),
       timer_sec: Number(quiz.timer_sec) || 15,
-      options,
+      options, // 셔플 제거하여 LLM이 생성한 순서와 해설 번호가 100% 일치하도록 함
     };
 
-    normalized.explanation.string = this.remapOptionRefs(normalized.explanation.string, noMap)
-       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "")
-       .replace(/해설의 Boolean은 true이다\./g, "")
-       .trim();
+    normalized.explanation.string = normalized.explanation.string
+       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "").trim();
 
     return normalized;
   }
+};
 };
 
 // ============================================================================
