@@ -33,7 +33,7 @@ const VALID_LAW_IDS = [
   { lawId: "013704", lawName: "금융소비자 보호에 관한 법률" } 
 ];
 
-const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
+const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY, timeoutMs: 120000 });
 const app = express();
 app.use(express.json());
 
@@ -167,9 +167,9 @@ async function getLawIdByName(lawName) {
 
   try {
     const response = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
-      params: { OC: OC_USER_ID, target: "law", type: "JSON", query: lawName },
-    });
-
+   params: { OC: OC_USER_ID, target: "law", type: "JSON", query: lawName },
+     timeout: 10000,
+     });
     const lawList = response.data?.LawSearch?.law;
     if (!lawList) return null;
 
@@ -192,12 +192,21 @@ async function getLawIdByName(lawName) {
   return null;
 }
 
-async function getLawArticleMap(lawId) {
-  if (lawArticlesCache.has(lawId)) return lawArticlesCache.get(lawId);
 
+function getLawArticleMap(lawId) {
+  if (!lawArticlesCache.has(lawId)) {
+    const p = loadLawArticleMap(lawId);
+    lawArticlesCache.set(lawId, p);
+    p.then((m) => { if (!m.size) lawArticlesCache.delete(lawId); });
+   }
+  return lawArticlesCache.get(lawId);
+}
+
+async function loadLawArticleMap(lawId) {
   try {
     const { data } = await axios.get(LAW_API_URL, {
-      params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
+    params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
+       timeout: 15000,
     });
 
     const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
@@ -211,7 +220,6 @@ async function getLawArticleMap(lawId) {
       if (parsed.num && !parsed.isDeleted) articleMap.set(parsed.num, parsed);
     });
 
-    lawArticlesCache.set(lawId, articleMap);
     return articleMap;
   } catch (err) {
     console.error(`법령 Map 로드 실패 (ID: ${lawId}):`, err.message);
@@ -219,6 +227,92 @@ async function getLawArticleMap(lawId) {
   }
 }
 
+// ---- 위임조문(lsDelegated): 인용법령/시행령/시행규칙 + 인용 위치(조항호목) ----
+const delegatedCache = new Map();
+const toArr = (v) => (v == null ? [] : Array.isArray(v) ? v.flat(Infinity) : [v]);
+const artKey = (n, g) => `제${n}조${g && g !== "0" ? `의${g}` : ""}`;
+
+function getDelegatedMap(lawId) {
+  if (!delegatedCache.has(lawId)) {
+    const p = axios
+      .get(LAW_API_URL, {
+        params: { OC: OC_USER_ID, type: "JSON", target: "lsDelegated", ID: lawId },
+        timeout: 20000,
+      })
+      .then(({ data }) => {
+        const map = new Map();
+        for (const it of toArr(data?.lsDelegated?.["법령"]?.["위임조문정보"])) {
+          const j = it["조정보"] || {};
+          map.set(artKey(j["조문번호"], j["조문가지번호"]), it["위임정보"]);
+        }
+        return map;
+      })
+      .catch((err) => {
+        delegatedCache.delete(lawId);
+        console.error(`위임조문 로드 실패 (ID: ${lawId}):`, err.message);
+        return new Map();
+      });
+    delegatedCache.set(lawId, p);
+  }
+  return delegatedCache.get(lawId);
+}
+
+// 위임정보 → [{ kind, lawName, num, from, lineText }]  ("제43조부터 제45조"는 API가 "43,44,45"로 풀어줌)
+function delegatedRefs(infos, selfName) {
+  const out = [];
+  for (const w of toArr(infos)) {
+    const kinds = toArr(w["위임구분"]);
+    const titles = toArr(w["위임법령제목"]);
+    for (const e of toArr(w["위임법령조문정보"])) {
+      const nums = String(e["위임법령조문번호"] ?? "0").split(",");
+      if (nums.every((n) => n === "0")) continue; // 법령명 링크만 있는 항목
+      const text = e["라인텍스트"] || "";
+      const named = text.match(/「([^」]+)」/)?.[1];
+      const idx = titles.length <= 1 ? 0 : titles.indexOf(named ?? selfName);
+      const kind = kinds[idx] ?? kinds[0];
+      if (idx < 0 || !["인용법령", "시행령", "시행규칙"].includes(kind)) continue;
+      const gajis = String(e["위임법령조문가지번호"] ?? "").split(",");
+      nums.forEach((n, i) =>
+        out.push({ kind, lawName: titles[idx], num: artKey(n, gajis[i]), from: e["조항호목"], lineText: text })
+      );
+    }
+  }
+  return out;
+}
+
+// "제4항부터 제6항" / "제1호부터 제9호" 범위면 해당 항·호만 추출 (그 외는 조문 전체)
+const circled = (ch) => {
+  const c = ch?.charCodeAt(0) ?? 0;
+  return c >= 0x2460 && c <= 0x2473 ? c - 0x2460 + 1 : c >= 0x3251 && c <= 0x325f ? c - 0x3251 + 21 : 0;
+};
+const cmpNo = ([a, b], [c, d]) => a - c || b - d;
+
+function sliceRange(art, text) {
+  const head = art.content.split("\n")[0];
+  let m = text.match(/(\d+)항부터\s*(?:제\s*)?(\d+)항/);
+  if (m) {
+    const picked = art.hang.filter((h) => circled(h[0]) >= +m[1] && circled(h[0]) <= +m[2]);
+    return picked.length ? [head, ...picked].join("\n") : art.content;
+  }
+  m = text.match(/(\d+)호(?:의(\d+))?부터\s*(?:제\s*)?(\d+)호(?:의(\d+))?/);
+  if (m) {
+    const [a, b] = [[+m[1], +(m[2] || 0)], [+m[3], +(m[4] || 0)]];
+    const ctx = +(text.match(/제(\d+)항(?=제\s*\d+호)/)?.[1] || 0);
+    const hang = ctx ? art.hang.find((h) => circled(h[0]) === ctx) : art.hang.join("\n");
+    if (!hang) return art.content;
+    const lines = hang.split("\n");
+    const out = [lines[0]];
+    let keep = false;
+    for (const line of lines.slice(1)) {
+      const n = line.match(/^ {2}(\d+)(?:의(\d+))?\./);
+      if (n) keep = cmpNo([+n[1], +(n[2] || 0)], a) >= 0 && cmpNo([+n[1], +(n[2] || 0)], b) <= 0;
+      if (keep) out.push(line);
+    }
+    return out.length > 1 ? [head, ...out].join("\n") : art.content;
+  }
+  return art.content;
+}
+  
 function extractReferences(content) {
   if (!content) return { internal: [], external: [] };
 
@@ -412,69 +506,77 @@ const LawService = {
     if (!OC_USER_ID) return console.error("LAW_GOV_OC 환경 변수가 없음"), [];
 
     try {
-      const articleMap = await getLawArticleMap(lawId);
-      if (!articleMap.size) return [];
-
-      const articlesWithRefs = await Promise.all(
-        Array.from(articleMap.values()).map(async (parsed) => {
-          const visited = new Set();
-          const collected = new Map();
-
-          const collectArticle = async (currentLawId, articleNum, currentDepth = 0, maxDepth = 3) => {
-            if (!articleNum) return;
-
-            const key = `${currentLawId}_${articleNum}`;
-            if (visited.has(key)) return;
-            visited.add(key);
-
-            const currentMap = await getLawArticleMap(currentLawId);
-            const article = currentMap?.get(articleNum);
-
-            if (!article || article.isDeleted) return;
-            collected.set(key, article);
-
-            const { internal, external } = extractReferences(article.content);
-            const totalRefCount = internal.length + external.length;
-
-            const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
-            if (currentDepth >= effectiveMaxDepth) return;
-
-            for (const refNum of internal) {
-              await collectArticle(currentLawId, refNum, currentDepth + 1, effectiveMaxDepth);
-            }
-
-            for (const ext of external) {
-              const targetLawId = await getLawIdByName(ext.lawName);
-              if (targetLawId && targetLawId !== currentLawId) {
-                await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
-              }
-            }
-          };
-
-          const selfKey = `${lawId}_${parsed.num}`;
-          await collectArticle(lawId, parsed.num);
-
-          const referencedContent = Array.from(collected.entries())
-            .filter(([k]) => k !== selfKey)
-            .map(([, refArt]) => `[${refArt.lawName} ${refArt.num}]\n${refArt.content}`)
-            .join("\n\n");
-
-          return { ...parsed, referencedContent };
-        })
-      );
-
-      return articlesWithRefs;
-    } catch (err) {
+       return Array.from((await getLawArticleMap(lawId)).values());
+          } catch (err) {
       console.error(`법령 API 오류 (ID: ${lawId}):`, err.message);
       return [];
     }
+  },
+
+  // 뽑힌 조문 1개만: 위임조문 API(인용/시행령/시행규칙) + 본문 정규식 재인용
+  async collectRefs(law, parsed) {
+    const lawId = law.lawId;
+    const visited = new Set();
+    const collected = new Map();
+
+    const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 3, opt = {}) => {
+      if (!articleNum) return;
+
+     const vk = `${key}_${articleNum}`;
+
+      if (visited.has(vk)) return;
+      visited.add(vk);
+
+      const found = (await getLawArticleMap(key))?.get(articleNum);
+      if (!found || found.isDeleted) return;
+
+      const ck = `${found.lawName}_${found.num}`;
+      if (collected.has(ck)) return;
+      const article = opt.lineText ? { ...found, content: sliceRange(found, opt.lineText) } : found;
+      collected.set(ck, { article, opt });
+
+      const { internal, external } = extractReferences(article.content);
+      const totalRefCount = internal.length + external.length;
+
+      const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
+      if (currentDepth >= effectiveMaxDepth) return;
+
+      for (const refNum of internal) {
+        await collectArticle(key, refNum, currentDepth + 1, effectiveMaxDepth);
+      }
+
+      for (const ext of external) {
+        const targetLawId = await getLawIdByName(ext.lawName);
+        if (targetLawId && targetLawId !== key) {
+          await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
+        }
+      }
+    };
+
+    const dmap = await getDelegatedMap(lawId);
+    for (const r of delegatedRefs(dmap.get(parsed.num), law.lawName)) {
+      const key = r.lawName === law.lawName ? lawId : await getLawIdByName(r.lawName);
+      if (key) await collectArticle(key, r.num, 1, 3, r);
+    }
+    await collectArticle(lawId, parsed.num);
+
+    const selfCk = `${parsed.lawName}_${parsed.num}`;
+    return Array.from(collected.entries())
+      .filter(([k]) => k !== selfCk)
+      .map(([, { article: a, opt }]) => {
+        const label = opt.from ? `${opt.from} ${opt.kind === "인용법령" ? "인용" : "위임"} → ` : "";
+        return `[${label}${a.lawName} ${a.num}]\n${a.content}`;
+      })
+      .join("\n\n");
   },
 
   async fetchRandomArticle(law) {
     const articles = await this.fetchLawArticles(law.lawId);
     const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
     if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
-    return validArticles[Math.floor(Math.random() * validArticles.length)];
+    const article = validArticles[Math.floor(Math.random() * validArticles.length)];
+   return { ...article, referencedContent: await this.collectRefs(law, article) };
+   }
   }
 };
 
@@ -745,8 +847,7 @@ const QuizService = {
 const article = await LawService.fetchRandomArticle(law);
 if (!article) continue;
 
-const articles = await LawService.fetchLawArticles(law.lawId);
-const refContent = articles.find(a => a.num === article.num)?.referencedContent ?? "";
+const refContent = article.referencedContent ?? "";
       console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
@@ -810,6 +911,7 @@ app.get("/api/mistral-models", async (req, res) => {
   try {
     const response = await axios.get("[https://api.mistral.ai/v1/models](https://api.mistral.ai/v1/models)", {
       headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
+      timeout: 10000,
     });
     const models = Array.isArray(response.data?.data) ? response.data.data.map(model => model.id).filter(Boolean) : [];
     return res.json({ models });
