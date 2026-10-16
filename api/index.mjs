@@ -157,7 +157,7 @@ const findOption = (target) => {
   const exact = norm.indexOf(target);
   if (exact !== -1) return exact;
   const sims = norm.map(t => getSimilarity(t, target));
-  return sims.filter(s => s >= 0.9).length === 1 ? sims.findIndex(s => s >= 0.9) : -1;
+  return sims.filter(s => s >= 0.85).length === 1 ? sims.findIndex(s => s >= 0.85) : -1;
 };
 // 해설이 결론 낸 보기(explanation_answer)를 최우선 기준으로 answer·is_correct를 맞춤
 const expIdx = findOption(cleanStr(quiz.explanation_answer));
