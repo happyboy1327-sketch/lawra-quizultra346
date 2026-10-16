@@ -660,6 +660,8 @@ const LawParser = {
         const hText = String(h?.["항내용"] || "").trim();
         const hNo = String(h?.["항번호"] || "").trim();
 
+        if (hNo === "0") hNo = ""; // "0"은 단일 조항이므로 번호 제거
+
         if (hText) {
           let cleanHText = hText;
           if (articleHeader && cleanHText.startsWith(articleHeader)) {
