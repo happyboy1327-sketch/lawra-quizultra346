@@ -174,7 +174,6 @@ const matchedIndex = rawOptions.findIndex(opt => {
     return normalized;
   }
 };
-};
 
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
