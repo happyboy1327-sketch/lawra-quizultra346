@@ -150,9 +150,18 @@ const getSimilarity = (s1, s2) => {
     return (longer.length - costs[s2.length]) / longer.length;
 };
 
-const matchedIndex = rawOptions.findIndex(opt => {
-    return getSimilarity(cleanStr(opt.text), targetAnswer) >= 0.9;
-});
+// 보기 찾기: 완전 일치 우선, 없으면 유사도 90% 이상이 "유일할 때만"
+const findOption = (target) => {
+  if (!target) return -1;
+  const norm = rawOptions.map(o => cleanStr(o.text));
+  const exact = norm.indexOf(target);
+  if (exact !== -1) return exact;
+  const sims = norm.map(t => getSimilarity(t, target));
+  return sims.filter(s => s >= 0.9).length === 1 ? sims.findIndex(s => s >= 0.9) : -1;
+};
+// 해설이 결론 낸 보기(explanation_answer)를 최우선 기준으로 answer·is_correct를 맞춤
+const expIdx = findOption(cleanStr(quiz.explanation_answer));
+const matchedIndex = expIdx !== -1 ? expIdx : findOption(targetAnswer);
     const options = matchedIndex !== -1
       ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
       : rawOptions;
@@ -163,7 +172,7 @@ const matchedIndex = rawOptions.findIndex(opt => {
       category: this.normalizeText(quiz.category),
       explanation,
       question: this.normalizeText(quiz.question),
-      answer: this.normalizeText(quiz.answer),
+      answer: matchedIndex !== -1 ? rawOptions[matchedIndex].text : this.normalizeText(quiz.answer),
       timer_sec: Number(quiz.timer_sec) || 15,
       options, // 셔플 제거하여 LLM이 생성한 순서와 해설 번호가 100% 일치하도록 함
     };
@@ -620,8 +629,7 @@ const randomOptionsTemplate = () => {
       is_correct: i === pos
     });
   }
-  
-  return options.join(",\n    ");
+  return options.map(o => JSON.stringify(o)).join(",\n    ");
 };
 
 const PROMPTS = {
@@ -662,6 +670,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "category": "${article.lawName}",
   "concept_summary_andcal": "[문제 푸는 목표 및 의도, 문제, 해설 내 올바른 날짜 및 숫자 계산식 모두 (예1: 2016-05-22의 3개월 전은 2016년 2월 22일| 예2: 3/5 = 5명의 조합원 중 과반수 이상 )]",
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설, 질문과 100% 일치하는 상황 및 전개, 법률 객체, 주체, 오류 없는 계산]", "Boolean": true},
+  "explanation_answer": "[위 해설이 최종 정답이라고 결론 낸 보기의 문장. options의 text와 한 글자도 다르지 않게]",
   "question": "[상황 및 전개, 법률 객체, 주체, 이용한 수단]",
   "options": [
    ${randomOptionsTemplate()}
@@ -719,7 +728,7 @@ ${JSON.stringify(quiz, null, 2)}
 2. 질문의 조건과 전제가 해설, 정답의 논리와 들어맞고 상통해야 한다.
 3. 인용한 조항 번호(조, 항, 호, 목)가 실존하며 내용과 상통해야 한다.
 4. 법률 적용 조건, 법률 행사 수단, 법리 해석이나 판례/예시 적용에 오류 및 모순이 없어야 한다.
-5. 정답(answer)과 해설(explanation)의 논리가 서로 일관되며 완전하게 일치해야 한다. 일치하지 않으면 해설에 맞게 정답지를 수정해라.
+5. 정답(answer)과 해설(explanation)의 논리가 서로 일관되며 완전하게 일치해야 한다. 일치하지 않으면 해설에 맞게 정답지를 수정해라. 수정 후 explanation_answer를 수정된 해설이 결론 낸 보기 문장으로 갱신하고, answer와 is_correct 보기의 text도 그 문장과 똑같이 맞춘다.
 6. 해설 내에 날짜 및 숫자 계산이 정확히 되어있어야 한다. [예1: "2026년 10월 15일의 6개월 이전" = "2026년 4월 15일" | 예2: 3/5 = 과반수(2.5) 이상이 맞음]
 7. 또한, 해설 내 조항번호와 그 내용이 일치하지 않으면 안된다.
 `
