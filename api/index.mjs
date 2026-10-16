@@ -255,24 +255,31 @@ const artKey = (n, g) => `제${n}조${g && g !== "0" ? `의${g}` : ""}`;
 
 function getDelegatedMap(lawId) {
   if (!delegatedCache.has(lawId)) {
-    const p = axios
-      .get(LAW_API_URL, {
-        params: { OC: OC_USER_ID, type: "JSON", target: "lsDelegated", ID: lawId },
-        timeout: 20000,
-      })
-      .then(({ data }) => {
-        const map = new Map();
-        for (const it of toArr(data?.lsDelegated?.["법령"]?.["위임조문정보"])) {
-          const j = it["조정보"] || {};
-          map.set(artKey(j["조문번호"], j["조문가지번호"]), it["위임정보"]);
+    const p = (async () => {
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const { data } = await axios.get(LAW_API_URL, {
+            params: { OC: OC_USER_ID, type: "JSON", target: "lsDelegated", ID: lawId },
+            timeout: 40000, // 타임아웃 40초로 연장
+          });
+          const map = new Map();
+          for (const it of toArr(data?.lsDelegated?.["법령"]?.["위임조문정보"])) {
+            const j = it["조정보"] || {};
+            map.set(artKey(j["조문번호"], j["조문가지번호"]), it["위임정보"]);
+          }
+          return map;
+        } catch (err) {
+          console.error(`위임조문 로드 실패 (ID: ${lawId}, 시도 ${attempt}/${maxRetries}):`, err.message);
+          if (attempt === maxRetries) {
+            console.warn(`[서버 오류 플래그] 위임조문 API 서버 오류 발생 (ID: ${lawId}): ${err.message}`);
+            delegatedCache.delete(lawId);
+            return new Map();
+          }
+          await Utils.sleep(2000);
         }
-        return map;
-      })
-      .catch((err) => {
-        delegatedCache.delete(lawId);
-        console.error(`위임조문 로드 실패 (ID: ${lawId}):`, err.message);
-        return new Map();
-      });
+      }
+    })();
     delegatedCache.set(lawId, p);
   }
   return delegatedCache.get(lawId);
