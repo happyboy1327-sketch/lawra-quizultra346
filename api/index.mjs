@@ -66,21 +66,49 @@ app.use((req, res, next) => {
 // ============================================================================
 
 const Calc = {
-  // 월·년 먼저 더하고 말일 보정(1/31 + 1개월 = 2/28·29), 그다음 일 단위를 더함
-  date(base, y, m, d) {
+  // 영업일 가감 계산 (주말 토·일만 제외)
+  addBusinessDays(startDate, days) {
+    let current = new Date(startDate);
+    let absDays = Math.abs(days);
+    let step = days >= 0 ? 1 : -1;
+
+    while (absDays > 0) {
+      current.setDate(current.getDate() + step);
+      const dayOfWeek = current.getDay(); // 0: 일요일, 6: 토요일
+      
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        absDays--;
+      }
+    }
+    return current;
+  },
+
+  // 월·년 먼저 더하고 말일 보정, 그다음 평일(b) 단위를 더함
+  date(base, y, m, b) {
     const [by, bm, bd] = String(base).split("-").map(Number);
     const tm = bm - 1 + m + y * 12;
     const ty = by + Math.floor(tm / 12), tmon = ((tm % 12) + 12) % 12;
     const last = new Date(ty, tmon + 1, 0).getDate();
-    const t = new Date(ty, tmon, Math.min(bd, last) + d);
+    
+    // 1. 년, 월 반영 및 말일 보정 적용
+    let t = new Date(ty, tmon, Math.min(bd, last));
+    
+    // 2. 파라미터로 넘어온 b 영업일수만큼 가감 (주말 제외 루프 실행)
+    if (b !== 0) {
+      t = Calc.addBusinessDays(t, b);
+    }
+    
     return `${t.getFullYear()}년 ${t.getMonth() + 1}월 ${t.getDate()}일`;
   },
-  // "DATE(2023-05-01, +0y, +12m, +0d)" / "NUM(1000000/20)" → 결과 문자열, 형식 오류면 null
+
+  // "DATE(기준일YYYY-MM-DD, +0y, +0m, +5B)" 형식을 파싱
   run(expr) {
     const s = String(expr).trim();
-    let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)y,\s*([+-]?\d+)m,\s*([+-]?\d+)d\)$/);
+    // 마지막 파라미터가 숫자에 B가 붙은 형태([+-]?\d+)B 인지 체크합니다.
+    let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)y,\s*([+-]?\d+)m,\s*([+-]?\d+)B\)\$/);
     if (m) return Calc.date(m[1], +m[2], +m[3], +m[4]);
-    m = s.match(/^NUM\(([\d+\-*/().\s]+)\)$/);          // 숫자와 사칙연산 기호만 허용
+    
+    m = s.match(/^NUM\(([\d+\-*/().\s]+)\)\$/);
     if (m) {
       try {
         const v = Function(`"use strict"; return (${m[1]});`)();
@@ -91,7 +119,7 @@ const Calc = {
   },
 };
 
-// {{c1}}, {{c2}} → calcul_check 순서대로 계산한 값으로 치환
+// 기존 치환 메커니즘 유지
 function applyCalc(quiz) {
   const list = Array.isArray(quiz.calcul_check) ? quiz.calcul_check : [];
   const vals = list.map(Calc.run);
@@ -107,7 +135,7 @@ function applyCalc(quiz) {
   const left = JSON.stringify(out).match(/\{\{c\d+\}\}/g);
   out.calcError = bad.length ? `calcul_check 형식 오류: ${bad.join(" / ")}` : left ? `미치환 토큰: ${left.join(",")}` : "";
   return out;
-  }
+}
 
 const Utils = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
