@@ -101,6 +101,16 @@ const Utils = {
       .replace(/([①②③④])(\s*번)/g, (_, c, tail) => `${CIRCLED[map(CIRCLED.indexOf(c) + 1) - 1]}${tail}`)
       .replace(/((?:보기|선택지)\s*)([1-4])(?!\d|\s*번|\s*번의)/g, (_, head, n) => `${head}${map(Number(n))}`);
   },
+  
+  extractDate: function (text) {
+  if (!text) return null;
+
+  const match = text.match(
+    /(\d{4}년\s*\d{1,2}월\s*\d{1,2}일|\d{4}[-./]\d{1,2}[-./]\d{1,2})/
+  );
+
+  return match ? match[0] : null;
+},
 
   normalizeQuiz: function (quiz) {
     if (!quiz || typeof quiz !== "object") return null;
@@ -160,11 +170,58 @@ const findOption = (target) => {
   return sims.filter(s => s >= 0.85).length === 1 ? sims.findIndex(s => s >= 0.85) : -1;
 };
 // 해설이 결론 낸 보기(explanation_answer)를 최우선 기준으로 answer·is_correct를 맞춤
-const expIdx = findOption(cleanStr(quiz.explanation_answer));
-const matchedIndex = expIdx !== -1 ? expIdx : findOption(targetAnswer);
-    const options = matchedIndex !== -1
-      ? rawOptions.map((opt, idx) => ({ ...opt, is_correct: idx === matchedIndex }))
-      : rawOptions;
+const expText = this.normalizeText(quiz.explanation_answer);
+const expIdx = findOption(cleanStr(expText));
+const ansIdx = findOption(targetAnswer);
+
+// 기존 정답 선택 로직 유지
+const target =
+  expIdx !== -1
+    ? expIdx
+    : ansIdx !== -1
+      ? ansIdx
+      : rawOptions.findIndex(o => o.is_correct);
+
+let matchedIndex = expIdx !== -1 ? expIdx : ansIdx;
+
+// 기존 정답 표시 로직을 유지하면서 정답 텍스트 수정
+if (expText && target !== -1) {
+  const optionText = rawOptions[target].text;
+  const optionDate = this.extractDate(optionText);
+  const explanationDate = this.extractDate(expText);
+
+
+  if (
+    optionDate &&
+    explanationDate &&
+    optionDate !== explanationDate
+  ) {
+    // 날짜가 다르면 기존 보기에서 날짜만 교체
+    rawOptions[target].text = optionText.replace(
+      optionDate,
+      explanationDate
+    );
+    matchedIndex = target;
+  } else if (
+    cleanStr(optionText) !== cleanStr(expText) &&
+    (
+      expIdx !== -1 ||
+      getSimilarity(cleanStr(optionText), cleanStr(expText)) >= 0.5
+    )
+  ) {
+    // 기존 텍스트 수정 로직 유지
+    rawOptions[target].text = expText;
+    matchedIndex = target;
+  }
+}
+
+const options = matchedIndex !== -1
+  ? rawOptions.map((opt, idx) => ({
+      ...opt,
+      is_correct: idx === matchedIndex
+    }))
+  : rawOptions;
+
 
     const normalized = {
       ...quiz,
