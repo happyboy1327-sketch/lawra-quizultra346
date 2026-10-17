@@ -210,6 +210,19 @@ const Utils = {
     return String(value);
   },
 
+  normalizeLawNotation: function (text) {
+    if (typeof text !== "string") return text;
+    return text
+      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*호\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
+      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
+      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*호/g, (_, n, ch) => `제${n}조제${circled(ch)}항`)
+      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*항/g, (_, n, ch) => `제${n}조제${circled(ch)}항`)
+      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])(?!\s*조)/g, (_, n, ch) => `제${n}조제${circled(ch)}항`)
+      .replace(/제\s*(\d+)\s*조\s*제\s*(\d+)\s*항/g, '제$1조제$2항')
+      .replace(/제\s*(\d+)\s*항\s*제\s*(\d+)\s*호/g, '제$1항제$2호')
+      .replace(/제\s*(\d+)\s*조\s*(\d+)호/g, '제$1조제$2호');
+  },
+
   // 해설 내 보기 번호 참조("2번", "②번", "보기 3")를 셔플된 순서에 맞게 치환
   remapOptionRefs: (text, noMap) => {
     const CIRCLED = ["①", "②", "③", "④"];
