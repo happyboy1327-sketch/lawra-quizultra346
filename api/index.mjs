@@ -765,6 +765,7 @@ const LawService = {
       if (collected.has(ck)) return;
       const article = opt.lineText ? { ...found, content: sliceRange(found, opt.lineText) } : found;
       collected.set(ck, { article, opt });
+      if (opt.kind === "시행령" || opt.kind === "시행규칙") return; // 하위법령 내부 인용은 상위법과 구분 불가라 따라가지 않음
 
       const { internal, external } = extractReferences(article.content);
       const totalRefCount = internal.length + external.length;
