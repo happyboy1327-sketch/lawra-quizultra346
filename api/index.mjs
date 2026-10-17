@@ -403,7 +403,7 @@ async function getLawIdByName(lawName) {
           lawName.replace(/\s+/g, "")
       ) || items[0];
 
-    const lawId = String(matched?.["법령일련번호"] || matched?.["법령ID"] || "");
+    const lawId = String(matched?.["법령일련번호"] || "");
     if (lawId) {
       lawIdCache.set(lawName, lawId);
       return lawId;
@@ -427,7 +427,7 @@ function getLawArticleMap(lawId) {
 async function loadLawArticleMap(lawId) {
   try {
     const { data } = await axios.get(LAW_API_URL, {
-    params: { OC: OC_USER_ID, type: "JSON", target: "eflaw", ID: lawId },
+    params: { OC: OC_USER_ID, type: "JSON", target: "law", MST: lawId },
        timeout: 15000,
     });
 
@@ -461,7 +461,7 @@ function getDelegatedMap(lawId) {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           const { data } = await axios.get(LAW_API_URL, {
-            params: { OC: OC_USER_ID, type: "JSON", target: "lsDelegated", ID: lawId },
+            params: { OC: OC_USER_ID, type: "JSON", target: "lsDelegated", MST: lawId },
             timeout: 40000, // 타임아웃 40초로 연장
           });
           const map = new Map();
@@ -802,12 +802,14 @@ const LawService = {
   },
 
   async fetchRandomArticle(law) {
-    const articles = await this.fetchLawArticles(law.lawId);
-    const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
-    if (!validArticles.length) return console.warn("사용 가능한 조문 없음 (30자 이상 조문 없음):", law.lawName), null;
-    const article = validArticles[Math.floor(Math.random() * validArticles.length)];
-   return { ...article, referencedContent: await this.collectRefs(law, article) };
-  }
+  const mst = await getLawIdByName(law.lawName);
+  if (!mst) return null;
+  const articles = await this.fetchLawArticles(mst);
+  const validArticles = articles.filter((art) => art?.content && art.content.length >= 30);
+  if (!validArticles.length) return null;
+  const article = validArticles[Math.floor(Math.random() * validArticles.length)];
+  return { ...article, referencedContent: await this.collectRefs({ ...law, lawId: mst }, article) };
+}
 };
 
 // ============================================================================
