@@ -432,7 +432,10 @@ async function loadLawArticleMap(lawId) {
     });
 
     const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
-    if (!joData) return new Map();
+    if (!joData) {
+  console.warn(`조문 비어있음 (MST: ${lawId}):`, JSON.stringify(data)?.slice(0, 200));
+  return new Map();
+}
 
     const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
     const articleMap = new Map();
@@ -469,6 +472,7 @@ function getDelegatedMap(lawId) {
             const j = it["조정보"] || {};
             map.set(artKey(j["조문번호"], j["조문가지번호"]), it["위임정보"]);
           }
+          if (!map.size) console.warn(`위임조문 비어있음 (MST: ${lawId}):`, JSON.stringify(data)?.slice(0, 200));
           return map;
         } catch (err) {
           console.error(`위임조문 로드 실패 (ID: ${lawId}, 시도 ${attempt}/${maxRetries}):`, err.message);
