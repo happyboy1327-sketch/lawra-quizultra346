@@ -120,33 +120,35 @@ function applyCalc(quiz) {
   const list = Array.isArray(quiz.calcul_check) ? quiz.calcul_check : [];
   
   const vals = list.map(item => {
-    if (typeof item !== 'string') return null;
-    
-    // 1. 등호 기준 좌변(수식/식) 추출
-    const parts = item.split('=');
-    const leftExpr = parts[0].trim();
-    const rightVal = parts[1] ? parts[1].trim() : null;
+  if (typeof item !== 'string') return null;
+  
+  // 1. 등호(=) 기준으로 분리
+  const parts = item.split('=');
+  const leftSide = parts[0].trim(); // 항목명; 수식
+  const rightVal = parts[1] ? parts[1].trim() : null;
 
-    // 2. pure 수식 형태(DATE, NUM에 순수 숫자/수식만 포함된 경우)만 Calc.run 실행
-    const isPureCalc = /^(DATE|NUM)\s*\(/.test(leftExpr);
-    
-    if (isPureCalc) {
-      try {
-        const res = Calc.run(leftExpr);
-        if (res !== null) return res;
-      } catch (e) {
-        // 연산 실패 시 fallback
-      }
-    }
+  // 2. 세미콜론(;) 기준으로 항목명과 수식 분리
+  const semiIndex = leftSide.indexOf(';');
+  if (semiIndex === -1) return null; // 항목명이나 세미콜론이 없으면 불량 처리
 
-    // 3. LLM이 우변에 명시해둔 결과값(= 2023-10-01 등)이 있다면 치환용 값으로 활용
-    if (rightVal) {
-      // 주석/설명 문구가 괄호나 텍스트로 붙어있다면 깔끔한 값만 추출
-      return rightVal.split('(')[0].trim();
-    }
+  const leftExpr = leftSide.substring(semiIndex + 1).trim(); // 순수 수식만 추출
+  
+  // 3. pure 수식 형태 검증 및 실행
+  const isPureCalc = /^(DATE|NUM)\s*\(/.test(leftExpr);
+  if (isPureCalc) {
+    try {
+      const res = Calc.run(leftExpr);
+      if (res !== null) return res;
+    } catch (e) {}
+  }
 
-    return null;
-  });
+  // 4. 실패 시 우변 결과 활용
+  if (rightVal) {
+    return rightVal.split('(')[0].trim();
+  }
+
+  return null;
+});
 
   // 4. calcul_check에 항목은 있는데 값 치환 및 연산이 전혀 불가능한 진짜 불량 건만 bad로 분류
   // (문장형 검증인 경우 치환 토큰 {{c1}} 등에 영향 없으면 오류 방출 금지)
