@@ -1182,6 +1182,16 @@ app.get("/api/mistral-models", async (req, res) => {
   }
 });
 
+app.get("/api/debug-refs", async (req, res) => {
+  const law = VALID_LAW_IDS.find((l) => l.lawName === req.query.law);
+  if (!law) return res.status(400).json({ error: "법령명 없음" });
+  const mst = await getLawIdByName(law.lawName);
+  const arts = await LawService.fetchLawArticles(mst);
+  const art = arts.find((a) => a.num === req.query.num);
+  if (!art) return res.json({ mst, articleCount: arts.length, error: "조문 없음" });
+  res.json({ mst, articleCount: arts.length, refs: await LawService.collectRefs({ ...law, lawId: mst }, art) });
+});
+
 app.use(express.static(path.join(__dirname, "..")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
