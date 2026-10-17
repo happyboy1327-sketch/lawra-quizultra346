@@ -72,7 +72,7 @@ const newQuizSetBtnEl = document.getElementById("newQuizSetBtnEl");
 newQuizSetBtnEl.addEventListener("click", async () => {
   newQuizSetBtnEl.disabled = true;
   newQuizSetBtnEl.classList.add("opacity-50", "cursor-not-allowed");
-  newQuizSetBtnEl.textContent = "퀴즈 생성 중... (최대 60초)";
+  newQuizSetBtnEl.textContent = "퀴즈 생성 중... (최대 100초)";
   
   try {
     const res = await fetch(QUIZ_API_URL, { method: "POST" });
