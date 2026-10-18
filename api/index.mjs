@@ -384,10 +384,18 @@ const options = matchedIndex !== -1
 const lawIdCache = new Map();
 const lawArticlesCache = new Map();
 
+// 법제처 호출은 한 번에 하나씩, 호출 사이 300ms
+let lawQueue = Promise.resolve();
+function lawSlot(fn) {
+  const run = lawQueue.then(fn, fn);
+  lawQueue = run.then(() => Utils.sleep(300), () => Utils.sleep(300));
+  return run;
+}
+
 async function lawGet(url, params, timeout = 15000, tries = 3) {
   for (let i = 1; ; i++) {
     try {
-      return (await axios.get(url, { params: { OC: OC_USER_ID, type: "JSON", ...params }, timeout })).data;
+      return (await lawSlot(() => axios.get(url, { params: { OC: OC_USER_ID, type: "JSON", ...params }, timeout }))).data;
     } catch (err) {
       if (i >= tries || (err.response && err.response.status < 500)) throw err;
       await Utils.sleep(1000 * i);
@@ -489,10 +497,7 @@ function getDelegatedMap(lawId) {
       const maxRetries = 3;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          const { data } = await axios.get(LAW_API_URL, {
-            params: { OC: OC_USER_ID, type: "JSON", target: "lsDelegated", MST: lawId },
-            timeout: 40000, // 타임아웃 40초로 연장
-          });
+          const data = await lawGet(LAW_API_URL, { target: "lsDelegated", MST: lawId }, 40000, 1);
           const map = new Map();
           for (const it of toArr(data?.lsDelegated?.["법령"]?.["위임조문정보"])) {
             const j = it["조정보"] || {};
