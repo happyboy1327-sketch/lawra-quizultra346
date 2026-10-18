@@ -1045,6 +1045,15 @@ const QuizService = {
     return { valid: true };
   },
 
+  validateExplanationNumbers(quiz, article, refContent) {
+  const norm = (s) => String(s || "").replace(/개월/g, "월").replace(/\s+/g, "");
+  const src = norm(`${article.content}${refContent}`);
+  const q = norm(`${quiz.question}${(quiz.options || []).map(o => o.text).join("")}`);
+  const nums = norm(quiz.explanation?.string).match(/\d+(일|월|년|주|배|%)/g) || [];
+  const bad = [...new Set(nums)].filter((n) => !src.includes(n) && !q.includes(n));
+  return bad.length ? { valid: false, reason: `해설 수치가 조문/문제에 없음: ${bad.join(", ")}` } : { valid: true };
+},
+
   // 2단계: 블라인드 솔버 검증
   async validateBlindSolver(quiz, article, refContent) {
     try {
@@ -1092,6 +1101,11 @@ const QuizService = {
       console.warn(`  └ [1단계 실패] ${step1.reason}`);
       return { valid: false, step: 1, reason: step1.reason, quiz };
     }
+    const step1a = this.validateExplanationNumbers(quiz, article, refContent);
+if (!step1a.valid) {
+  console.warn(`  └ [1-a단계 실패] ${step1a.reason}`);
+  return { valid: false, step: 1, reason: step1a.reason, quiz };
+}
     console.log("  └ [1단계 통과] 필수 필드 검증 성공");
 
     const step2 = await this.validateBlindSolver(quiz, article, refContent);
