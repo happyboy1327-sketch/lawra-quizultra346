@@ -1165,6 +1165,7 @@ const article = await LawService.fetchRandomArticle(law);
 if (!article) continue;
 
 const refContent = article.referencedContent ?? "";
+      if (!refContent && article.content.length < 50) { console.warn(`  └ 원문이 너무 짧고 참조 없음, 건너뜀: ${law.lawName} ${article.num}`); continue; }
       console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
