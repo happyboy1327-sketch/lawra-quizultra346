@@ -114,41 +114,31 @@ run(expr) {
     return null;
   },
 };
+function parseCalcItem(item) {
+  let s = item;
+  if (s && typeof s === "object") s = s.expr || s.formula || s.value || Object.values(s).join(";");
+  if (typeof s !== "string") return null;
+
+  const eq = s.indexOf("=");
+  const left = eq === -1 ? s : s.slice(0, eq);
+  const right = eq === -1 ? "" : s.slice(eq + 1).trim();
+  const semi = left.indexOf(";");
+  const expr = (semi === -1 ? left : left.slice(semi + 1)).trim(); // 항목명 없이 식만 와도 허용
+
+  if (/^(DATE|NUM)\s*\(/.test(expr)) {
+    try {
+      const res = Calc.run(expr);
+      if (res !== null && res !== undefined && String(res).trim() !== "") return res;
+    } catch (e) {}
+  }
+  return (right.split("(")[0].trim() || right) || null; // 빈 문자열로 치환되는 것 방지
+}
 
 // 기존 치환 메커니즘 유지
 function applyCalc(quiz) {
   const list = Array.isArray(quiz.calcul_check) ? quiz.calcul_check : [];
   
-  const vals = list.map(item => {
-  if (typeof item !== 'string') return null;
-  
-  // 1. 등호(=) 기준으로 분리
-  const parts = item.split('=');
-  const leftSide = parts[0].trim(); // 항목명; 수식
-  const rightVal = parts[1] ? parts[1].trim() : null;
-
-  // 2. 세미콜론(;) 기준으로 항목명과 수식 분리
-  const semiIndex = leftSide.indexOf(';');
-  if (semiIndex === -1) return null; // 항목명이나 세미콜론이 없으면 불량 처리
-
-  const leftExpr = leftSide.substring(semiIndex + 1).trim(); // 순수 수식만 추출
-  
-  // 3. pure 수식 형태 검증 및 실행
-  const isPureCalc = /^(DATE|NUM)\s*\(/.test(leftExpr);
-  if (isPureCalc) {
-    try {
-      const res = Calc.run(leftExpr);
-      if (res !== null) return res;
-    } catch (e) {}
-  }
-
-  // 4. 실패 시 우변 결과 활용
-  if (rightVal) {
-    return rightVal.split('(')[0].trim();
-  }
-
-  return null;
-});
+  const vals = list.map(parseCalcItem);
 
   // 4. calcul_check에 항목은 있는데 값 치환 및 연산이 전혀 불가능한 진짜 불량 건만 bad로 분류
   // (문장형 검증인 경우 치환 토큰 {{c1}} 등에 영향 없으면 오류 방출 금지)
@@ -166,6 +156,7 @@ function applyCalc(quiz) {
   const left = JSON.stringify(out).match(/\{\{c\d+\}\}/g);
   
   // 미치환 토큰이 남아있을 때만 파싱 오류 처리하여 무한 재시도/타임아웃 방지
+  if (left) console.warn(`  └ calcul_check 원본: ${JSON.stringify(quiz.calcul_check)}`);
   out.calcError = left ? `미치환 토큰 존재: ${left.join(",")}` : "";
   return out;
 }
