@@ -388,11 +388,11 @@ const lawArticlesCache = new Map();
 let lawQueue = Promise.resolve();
 function lawSlot(fn) {
   const run = lawQueue.then(fn, fn);
-  lawQueue = run.then(() => Utils.sleep(300), () => Utils.sleep(300));
+  lawQueue = run.then(() => Utils.sleep(200), () => Utils.sleep(200));
   return run;
 }
 
-async function lawGet(url, params, timeout = 15000, tries = 3) {
+async function lawGet(url, params, timeout = 13000, tries = 3) {
   for (let i = 1; ; i++) {
     try {
       return (await lawSlot(() => axios.get(url, { params: { OC: OC_USER_ID, type: "JSON", ...params }, timeout }))).data;
