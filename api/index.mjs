@@ -27,6 +27,7 @@ const VALID_LAW_IDS = [
   { lawId: "001706", lawName: "민법" },
   { lawId: "001692", lawName: "형법" },
   { lawId: "009318", lawName: "전자상거래 등에서의 소비자보호에 관한 법률" },
+  { lawId: "009708", lawName: "재난 및 안전관리 기본법 시행령" },
   { lawId: "001638", lawName: "도로교통법" },
   { lawId: "001248", lawName: "주택임대차보호법" },
   { lawId: "001206", lawName: "가사소송법" },
