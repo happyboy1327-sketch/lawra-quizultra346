@@ -384,15 +384,23 @@ const options = matchedIndex !== -1
 const lawIdCache = new Map();
 const lawArticlesCache = new Map();
 
+async function lawGet(url, params, timeout = 15000, tries = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      return (await axios.get(url, { params: { OC: OC_USER_ID, type: "JSON", ...params }, timeout })).data;
+    } catch (err) {
+      if (i >= tries || (err.response && err.response.status < 500)) throw err;
+      await Utils.sleep(1000 * i);
+          }
+  }
+}
+
 async function getLawIdByName(lawName) {
   if (lawIdCache.has(lawName)) return lawIdCache.get(lawName);
 
   try {
-    const response = await axios.get("https://www.law.go.kr/DRF/lawSearch.do", {
-   params: { OC: OC_USER_ID, target: "law", type: "JSON", query: lawName },
-     timeout: 10000,
-     });
-    const lawList = response.data?.LawSearch?.law;
+const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { target: "law", query: lawName }, 10000);
+    const lawList = data?.LawSearch?.law;
     if (!lawList) return null;
 
     const items = Array.isArray(lawList) ? lawList : [lawList];
@@ -414,7 +422,6 @@ async function getLawIdByName(lawName) {
   return null;
 }
 
-
 function getLawArticleMap(lawId) {
   if (!lawArticlesCache.has(lawId)) {
     const p = loadLawArticleMap(lawId);
@@ -426,10 +433,7 @@ function getLawArticleMap(lawId) {
 
 async function loadLawArticleMap(lawId) {
   try {
-    const { data } = await axios.get(LAW_API_URL, {
-    params: { OC: OC_USER_ID, type: "JSON", target: "law", MST: lawId },
-       timeout: 15000,
-    });
+    const data = await lawGet(LAW_API_URL, { target: "law", MST: lawId });
 
     const joData = data?.["법령"]?.["조문"]?.["조문단위"] || data?.["법령"]?.["조문"];
     if (!joData) {
@@ -449,6 +453,28 @@ async function loadLawArticleMap(lawId) {
   } catch (err) {
     console.error(`법령 Map 로드 실패 (ID: ${lawId}):`, err.message);
     return new Map();
+  }
+}
+
+// ---- 조문 1개만 조회 (JO = 조번호 4자리 + 가지번호 2자리) ----
+const joCode = (num) => {
+  const m = String(num).match(/제(\d+)조(?:의(\d+))?/);
+  return m ? m[1].padStart(4, "0") + (m[2] || "0").padStart(2, "0") : null;
+};
+
+async function getArticle(mst, num) {
+  const jo = joCode(num);
+  if (!jo) return null;
+  try {
+    const data = await lawGet(LAW_API_URL, { target: "law", MST: mst, JO: jo });
+    const raw = data?.["법령"]?.["조문"]?.["조문단위"];
+    const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
+    return (Array.isArray(raw) ? raw : [raw]).filter(Boolean)
+      .map((a) => LawParser.parseArticle(a, lawName))
+      .find((a) => a.num === num && !a.isDeleted) || null;
+  } catch (err) {
+    console.error(`조문 조회 실패 (MST ${mst} ${num}):`, err.message);
+    return null;
   }
 }
 
@@ -762,7 +788,7 @@ const LawService = {
       if (visited.has(vk)) return;
       visited.add(vk);
 
-      const found = (await getLawArticleMap(key))?.get(articleNum);
+      const found = await getArticle(key, articleNum);
       if (!found || found.isDeleted) return;
 
       const ck = `${found.lawName}_${found.num}`;
