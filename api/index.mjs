@@ -294,7 +294,7 @@ const findOption = (target) => {
   const exact = norm.indexOf(target);
   if (exact !== -1) return exact;
   const sims = norm.map(t => getSimilarity(t, target));
-  return sims.filter(s => s >= 0.85).length === 1 ? sims.findIndex(s => s >= 0.85) : -1;
+  return sims.filter(s => s >= 0.9).length === 1 ? sims.findIndex(s => s >= 0.9) : -1;
 };
 // 해설이 결론 낸 보기(explanation_answer)를 최우선 기준으로 answer·is_correct를 맞춤
 const expText = this.normalizeText(quiz.explanation_answer);
@@ -362,7 +362,7 @@ const options = matchedIndex !== -1
     };
 
     normalized.explanation.string = normalized.explanation.string
-       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설)[^\]]*\]\s*/g, "")
+       .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설|해설)[^\]]*\]\s*/g, "")
        .replace(/해설의 Boolean은 true[^.\n]*\./g, "")
        .trim();
 
@@ -889,6 +889,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 □ 조항의 개정일, 삭제 여부, 조항 번호 자체를 묻는 문제는 제외하고, 상식적이고 일률적인 법률 사례 문제를 만드세요.
 □ 인물 및 기업, 사업체의 가명은 A씨, B사, 김 씨, 서 씨 등으로 표기하고 해당 인물이 처한 상황과 맥락을 자세히 작성하시오. **인물의 직업 및 역할이 법률 내에 적확하게 언급되어있고 중요하다면 절대로 생략하지 마시오.** (예: 일반소비자 A씨, 금융상품 판매업자 B씨, 전문투자자 C씨 )
 □ 질문의 전제에 부합하는 정답을 확실하게 1개만 설정하고, 나머지는 명백한 오답으로 구성하세요.
+□ 어차피 실수할거면 걍 인용조문 번호는 한 번만 언급하시오. (너 잘 틀리잖아 ㅅㅂ)
 □ 해설은 [원문 조문]과 [참조 조문]에 적힌 내용만 근거로 쓰시오. 원문에 없는 법리·학설·판례·일반론(예: "위임입법의 예", "~할 수 없다")을 덧붙이지 마시오. **과장할거면 걍 난 모르겠다 [IDK] 토큰을 덧붙이시오.**
 □ 사례의 법률관계(위임·사무관리·도급·부당이득 등)를 조문이 규율하는 것과 정확히 일치시키고, 서로 다른 제도의 용어를 섞지 마시오. 조문의 적용 전제(예: 사무관리는 "의무 없이" 관리)가 사례에 드러나야 합니다.
 □ 사례 속 사실관계가 서로 모순되지 않는지 출제 전에 점검하시오. 예: 본인이 계속을 요구했다면 계속이 본인 의사에 반한다고 쓸 수 없습니다.
