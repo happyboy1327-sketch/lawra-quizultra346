@@ -18,7 +18,7 @@ console.log("LAW_QUIZ_MISTRAL_KEY:", process.env.LAW_QUIZ_MISTRAL_KEY ? "존재"
 console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "존재" : "없음");
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
-const MODEL = 'mistral-7b-instruct';
+const MODEL = 'ministral-14b-2512';
 const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
 const MISTRAL_MIN_INTERVAL_MS = 800;
 
@@ -1257,7 +1257,7 @@ app.post("/api/lawquizzes/new", async (req, res) => {
 
 app.get("/api/mistral-models", async (req, res) => {
   try {
-    const response = await axios.get("[https://api.mistral.ai/v1/models](https://api.mistral.ai/v1/models)", {
+    const response = await axios.get("https://api.mistral.ai/v1/models"), {
       headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
       timeout: 10000,
     });
