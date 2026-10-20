@@ -1044,7 +1044,11 @@ const QuizService = {
 },
 
   async generateQuiz(article, retriesLeft = 2) {
-    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) return null;
+    if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30)
+    { 
+      console.log('너무 짧거나 법령 매우 부실. 출제 불가');
+      return null;
+    }
     
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
