@@ -1048,10 +1048,36 @@ const QuizService = {
     
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
-    const prompt = PROMPTS.generate(article, content, refContent);
+    const userPrompt = PROMPTS.generate(article, content, refContent);
+
+    // 1. json_object 포맷을 깨지 않으면서 [IDK]를 유도하는 시스템 지침 정의
+    const systemInstruction = `[SYSTEM 지침 - 반드시 준수할 것]
+너는 엄격한 대한민국 법률 퀴즈 생성기다. 추측이나 개인적 견해를 절대로 포함하지 마.
+제공된 법률 본문(Context)의 내용이 모호하거나, 데이터 부족으로 명확한 퀴즈(선지 및 정답)를 구성할 수 없다면, 절대 퀴즈를 허위로 지어내지 마라.
+만약 퀴즈 출제가 불가능하다고 판단되면, 다른 JSON 필드를 모두 무시하고 정확히 아래의 JSON 형태로만 응답하고 생성을 즉시 멈춰라. 스톱 토큰 [IDK]가 발동되어야 한다.
+
+출제 불가 시 반환할 JSON 예시:
+{
+  "error": "[IDK]"
+}
+
+--------------------------------------------------
+[USER 요청]
+`;
+
+    // 2. 기존 requestMistral 구조(string 입력)에 맞게 프롬프트를 하나로 결합
+    const finalPrompt = systemInstruction + userPrompt;
 
     try {
-      const rawQuiz = await this.requestMistral(prompt, "xhigh");
+      // 기존 구조 그대로 string인 finalPrompt를 넘겨줍니다.
+      const rawQuiz = await this.requestMistral(finalPrompt, "xhigh");
+      
+      // 3. 만약 AI가 [IDK] 구조를 반환했다면 에러 처리 (Utils.normalizeQuiz 단계에서 터지는 것 방지)
+      if (rawQuiz && rawQuiz.includes("[IDK]")) {
+        console.warn("법률 근거 부족으로 퀴즈 출제 스킵 ([IDK] 감지)");
+        return null;
+      }
+
       return Utils.normalizeQuiz(rawQuiz);
     } catch (err) {
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
@@ -1062,6 +1088,7 @@ const QuizService = {
       return null;
     }
   },
+
 
   // 1단계: 필수 필드 검증
   validateRequiredFields(quiz) {
