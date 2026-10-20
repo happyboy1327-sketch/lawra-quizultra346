@@ -1069,11 +1069,12 @@ const QuizService = {
     const finalPrompt = systemInstruction + userPrompt;
 
     try {
-      // 기존 구조 그대로 string인 finalPrompt를 넘겨줍니다.
       const rawQuiz = await this.requestMistral(finalPrompt, "xhigh");
       
-      // 3. 만약 AI가 [IDK] 구조를 반환했다면 에러 처리 (Utils.normalizeQuiz 단계에서 터지는 것 방지)
-      if (rawQuiz && rawQuiz.includes("[IDK]")) {
+      // 1. 객체 유형에 상관없이 안전하게 문자열로 변환하여 [IDK] 검사
+      const quizString = typeof rawQuiz === 'string' ? rawQuiz : JSON.stringify(rawQuiz);
+      
+      if (quizString && quizString.includes("[IDK]")) {
         console.warn("법률 근거 부족으로 퀴즈 출제 스킵 ([IDK] 감지)");
         return null;
       }
