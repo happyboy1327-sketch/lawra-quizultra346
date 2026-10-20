@@ -1257,7 +1257,7 @@ app.post("/api/lawquizzes/new", async (req, res) => {
 
 app.get("/api/mistral-models", async (req, res) => {
   try {
-    const response = await axios.get("https://api.mistral.ai/v1/models"), {
+    const response = await axios.get("https://api.mistral.ai/v1/models", {
       headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
       timeout: 10000,
     });
