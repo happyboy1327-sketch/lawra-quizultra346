@@ -573,8 +573,24 @@ function extractReferences(content) {
   if (!content) return { internal: [], external: [] };
 
   const external = [];
-  const cleanContent = content.replace(
-    /([가-힣]+법)\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
+  const addExt = (lawName, articleNum) => external.push({ lawName, articleNum });
+
+  // 「법령명」 제N조 [및/또는/,/부터/까지 제M조 ...]: 뒤따르는 조문 나열 전체를 그 법령의 인용으로 처리
+  const bracketCleaned = content.replace(
+    /「([^」]+)」\s*((?:제\s*\d+\s*조(?:\s*의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?(?:\s*(?:부터|까지|및|또는|,|ㆍ|과|와)\s*)?)+)/g,
+    (m, lawName, run) => {
+      const name = lawName.trim();
+      const rest = run.replace(
+        /제\s*(\d+)\s*조(?:\s*의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?\s*부터\s*(?:제\s*)?(\d+)\s*조/g,
+        (mm, a, b) => { for (let n = +a; n <= +b; n++) addExt(name, `제${n}조`); return " "; }
+      );
+      for (const x of rest.matchAll(/제\s*(\d+)\s*조(?:\s*의\s*(\d+))?/g)) addExt(name, `제${x[1]}조${x[2] ? `의${x[2]}` : ""}`);
+      return " ";
+    }
+  );
+
+   const cleanContent = bracketCleaned.replace(
+     /([가-힣]+법)\s*(제\s*\d+\s*조(?:의\s*\d+)?)/g,
     (match, lawName, articleNum) => {
       external.push({ lawName, articleNum: articleNum.replace(/\s+/g, "") });
       return "";
