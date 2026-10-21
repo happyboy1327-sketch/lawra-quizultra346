@@ -941,9 +941,9 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "concept_summary": "[문제 푸는 목표 및 의도, 문제 요약, 어렵고 핵심적인 법률 용어. **주체와 객체**]",
   "calcul_check": "[계산할 항목명 및 계산식. 날짜: DATE(기준일YYYY-MM-DD, +0y, +개월m, +일d) / 숫자: NUM(수식). 예1: 계약 종료 3개월 전; DATE(2016-05-22, +0y, -3m, +0d)=2016-02-22  예2: 100명 중 1/3; NUM(100/3)=50000 예3: 10영업일; DATE(2016-05-22, +0y, +0m, +10B)=2016-06-03]",
   "judicial_precedent": "[추가 대법원 상의 판례]", 
+  "question": "[상황 및 전개, 법률 객체, 주체, 이용한 수단]", 
   "explanation": {"string": "[인용된 법률 조문, 항, 호, 목과 일치하고 상통하는 상세 해설, 질문과 100% 일치하는 상황 및 전개, 법률 객체, 주체, 오류 없는 계산. 문제 지문에 언급된 인물만 서술한 문장]", "Boolean": true},
   "explanation_answer": "[위 해설이 최종 정답이라고 결론 내어 options의 text와 한 글자도 다르지 않은 문장]",
-  "question": "[상황 및 전개, 법률 객체, 주체, 이용한 수단]", 
   "options": [
    ${randomOptionsTemplate()}
   ],
