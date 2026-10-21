@@ -1325,10 +1325,20 @@ app.get("/api/mistral-models", async (req, res) => {
 });
 
 app.get("/api/debug-byl", async (req, res) => {
+  const bylText = (b) => {
+    const lines = toArr(b["별표내용"]).flat(Infinity).map((s) => String(s).trim()).filter(Boolean);
+    const out = [];
+    for (const t of lines) {
+      const isNew = /^(■|\d+(의\d+)?\.\s|[가-힣]\.\s)/.test(t);
+      if (!isNew && out.length) out[out.length - 1] += t;
+      else out.push(/^[가-힣]\.\s/.test(t) ? "  " + t : t);
+    }
+    return out.join("\n");
+  };
   const mst = await getLawIdByName(req.query.law);
   const data = await lawGet(LAW_API_URL, { target: "law", MST: mst });
-  const b = data?.["법령"]?.["별표"];
-  res.json({ mst, keys: Object.keys(data?.["법령"] || {}), byl: JSON.stringify(b)?.slice(0, 3000) });
+  const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
+  res.type("text/plain").send(list.map((b) => `[별표 ${Number(b["별표번호"])}] ${b["별표제목"]}\n${bylText(b)}`).join("\n\n"));
 });
 
 app.get("/api/debug-refs", async (req, res) => {
