@@ -1343,7 +1343,9 @@ app.get("/api/debug-byl", async (req, res) => {
 
 app.get("/api/debug/lawname/:mst", (req, res) => {
   res.json({
-    mst: req.params.mst
+    url: req.url,
+    params: req.params,
+    query: req.query
   });
 });
 
