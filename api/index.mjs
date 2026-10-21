@@ -1341,6 +1341,12 @@ app.get("/api/debug-byl", async (req, res) => {
   res.type("text/plain").send(list.map((b) => `[별표 ${Number(b["별표번호"])}] ${b["별표제목"]}\n${bylText(b)}`).join("\n\n"));
 });
 
+app.get("/api/debug/lawname/:mst", (req, res) => {
+  res.json({
+    mst: req.params.mst
+  });
+});
+
 app.get("/api/debug-refs", async (req, res) => {
   const law = VALID_LAW_IDS.find((l) => l.lawName === req.query.law);
   if (!law) return res.status(400).json({ error: "법령명 없음" });
