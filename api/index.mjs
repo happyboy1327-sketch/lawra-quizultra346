@@ -1335,11 +1335,25 @@ app.get("/api/debug-byl", async (req, res) => {
     }
     return out.join("\n");
   };
-  const lawId = "009708"
-  const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { target: "eflaw", ID: "lawId" });
+
+  const lawId = "009708";
+  
+  // 1. ID: lawId 로 수정 (따옴표 제거)
+  // 2. OC: "본인의_API_인증키" 추가 필요
+  const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { 
+    target: "eflaw", 
+    ID: lawId 
+  });
+
   const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
+  
+  if (!list || list.length === 0) {
+    return res.type("text/plain").send("별표 데이터를 찾을 수 없거나 API 요청에 실패했습니다.");
+  }
+
   res.type("text/plain").send(list.map((b) => `[별표 ${Number(b["별표번호"])}] ${b["별표제목"]}\n${bylText(b)}`).join("\n\n"));
 });
+
 
 app.get("/api/debug/lawname/:mst", (req, res) => {
   res.json({
