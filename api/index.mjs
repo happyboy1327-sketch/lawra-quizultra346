@@ -1335,8 +1335,8 @@ app.get("/api/debug-byl", async (req, res) => {
     }
     return out.join("\n");
   };
-  const mst = await getLawIdByName(req.query.law);
-  const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { target: "law", query: lawName });
+  const lawId = "009708"
+  const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { target: "eflaw", ID: "lawId" });
   const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
   res.type("text/plain").send(list.map((b) => `[별표 ${Number(b["별표번호"])}] ${b["별표제목"]}\n${bylText(b)}`).join("\n\n"));
 });
