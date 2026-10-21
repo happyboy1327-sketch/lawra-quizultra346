@@ -1324,6 +1324,13 @@ app.get("/api/mistral-models", async (req, res) => {
   }
 });
 
+app.get("/api/debug-byl", async (req, res) => {
+  const mst = await getLawIdByName(req.query.law);
+  const data = await lawGet(LAW_API_URL, { target: "law", MST: mst });
+  const b = data?.["법령"]?.["별표"];
+  res.json({ mst, keys: Object.keys(data?.["법령"] || {}), byl: JSON.stringify(b)?.slice(0, 3000) });
+});
+
 app.get("/api/debug-refs", async (req, res) => {
   const law = VALID_LAW_IDS.find((l) => l.lawName === req.query.law);
   if (!law) return res.status(400).json({ error: "법령명 없음" });
