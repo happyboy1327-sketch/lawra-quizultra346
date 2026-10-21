@@ -364,7 +364,7 @@ const options = matchedIndex !== -1
     normalized.explanation.string = normalized.explanation.string
        .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설|해설)[^\]]*\]\s*/g, "")
        .replace(/해설의 Boolean은 true[^.\n]*\./g, "")
-       .replace(/^\[([\s\S]*)\]\$/, '\$1');
+       .replace(/^\[([\s\S]*)\]\$/, '\$1')
        .trim();
 
     return normalized;
