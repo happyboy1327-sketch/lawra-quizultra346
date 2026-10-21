@@ -1340,7 +1340,7 @@ app.get("/api/debug-byl", async (req, res) => {
   
   // 1. ID: lawId 로 수정 (따옴표 제거)
   // 2. OC: "본인의_API_인증키" 추가 필요
-  const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { 
+  const data = await lawGet(LAW_API_URL, { 
     target: "eflaw", 
     ID: lawId 
   });
