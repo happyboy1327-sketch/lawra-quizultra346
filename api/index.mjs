@@ -1363,9 +1363,9 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
 });
 
 app.get("/api/debug-byl", async (req, res) => {
-  return res.type("text/plain").send("DEBUG-BYL TEST 777");
-});
-/*
+  const mst = req.query.mst;
+  if (!mst) return res.status(400).type("text/plain").send("mst 쿼리 필요");
+
   const dec = (s) =>
     String(s ?? "")
       .replace(/&lt;/g, "<")
@@ -1420,14 +1420,11 @@ app.get("/api/debug-byl", async (req, res) => {
             ? `별표 ${no}의${sub}`
             : `별표 ${no}`;
 
-        return require("util").inspect(b, {
-  depth: null,
-  maxArrayLength: null
-});
+        return `[${tag}]\n${dec(bylText(b))}`;
       })
       .join("\n\n")
   );
-});*/
+});
 
 app.use(express.static(path.join(__dirname, "..")));
 app.get("/", (req, res) => {
