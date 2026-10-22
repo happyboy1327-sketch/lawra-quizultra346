@@ -514,7 +514,7 @@ function getDelegatedMap(lawId) {
   return delegatedCache.get(lawId);
 }
 
-// 위임정보 → [{ kind, lawName, num, from, lineText }]  ("제43조부터 제45조"는 API가 "43,44,45"로 풀어줌)
+// 위임조문 → [{ kind, lawName, num, from, lineText }]  ("제43조부터 제45조"는 API가 "43,44,45"로 풀어줌)
 function delegatedRefs(infos, selfName) {
   const out = [];
   for (const w of toArr(infos)) {
@@ -523,14 +523,28 @@ function delegatedRefs(infos, selfName) {
     for (const e of toArr(w["위임법령조문정보"])) {
       const nums = String(e["위임법령조문번호"] ?? "0").split(",");
       if (nums.every((n) => n === "0")) continue; // 법령명 링크만 있는 항목
+      
       const text = e["라인텍스트"] || "";
       const named = text.match(/「([^」]+)」/)?.[1];
-      const idx = titles.length <= 1 ? 0 : titles.indexOf(named ?? selfName);
+      
+      // 정확한 일치(indexOf) 대신 부분 문자열 포함 관계(findIndex)를 사용하여 매칭 오류 방지
+      let idx = 0;
+      if (named && titles.length > 1) {
+        const foundIdx = titles.findIndex(t => t.includes(named) || named.includes(t));
+        if (foundIdx !== -1) idx = foundIdx;
+      } else if (titles.length > 1 && selfName) {
+        const selfIdx = titles.findIndex(t => t.includes(selfName) || selfName.includes(t));
+        if (selfIdx !== -1) idx = selfIdx;
+      }
+
       const kind = kinds[idx] ?? kinds[0];
-      if (idx < 0 || !["인용법령", "시행령", "시행규칙"].includes(kind)) continue;
+      const targetLawName = titles[idx] ?? titles[0] ?? selfName;
+
+      if (!["인용법령", "시행령", "시행규칙"].includes(kind)) continue;
+      
       const gajis = String(e["위임법령조문가지번호"] ?? "").split(",");
       nums.forEach((n, i) =>
-        out.push({ kind, lawName: titles[idx], num: artKey(n, gajis[i]), from: e["조항호목"], lineText: text })
+        out.push({ kind, lawName: targetLawName, num: artKey(n, gajis[i]), from: e["조항호목"], lineText: text })
       );
     }
   }
