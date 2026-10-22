@@ -842,25 +842,30 @@ async function fetchSpecificTable(lawId, lawName, targetNo, targetSub) {
     const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
     if (!list.length) return null;
 
-    const matched = list.find((b) => {
-      const no = Number(b["별표번호"] || 0);
-      const sub = Number(b["별표가지번호"] || 0);
+    const matched = list.find((b) =>
+  Number(b["별표번호"] || 0) === Number(targetNo) &&
+  Number(b["별표가지번호"] || 0) === Number(targetSub)
+);
 
-      return no === Number(targetNo) && sub === Number(targetSub);
-    });
-
-    if (!matched) return null;
-
-    const no = Number(matched["별표번호"] || 0);
-    const sub = Number(matched["별표가지번호"] || 0);
-
-    const tag =
-      sub > 0
-        ? `별표 ${no}의${sub}`
-        : `별표 ${no}`;
+    if (!matched) {
+  console.log('별표 매치 실패', {
+    lawId,
+    targetNo,
+    targetSub,
+    available: list.map(b => ({
+      번호: b["별표번호"],
+      가지번호: b["별표가지번호"],
+    })),
+  });
+  return null;
+}
+    const tag = Number(matched["별표가지번호"] || 0) > 0
+  ? `별표 ${matched["별표번호"]}의${matched["별표가지번호"]}`
+  : `별표 ${matched["별표번호"]}`;
 
     return `[${lawName} ${tag}]\n${dec(bylText(matched))}`;
   } catch (err) {
+    console.error('byl데이터 수집 실패:', err);
     return null;
   }
 }
