@@ -775,6 +775,58 @@ const LawParser = {
     };
   }
 };
+const dec = (s) =>
+  String(s ?? "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+const bylText = (b) => {
+  const lines = toArr(b["별표내용"])
+    .flat(Infinity)
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+
+  const out = [];
+
+  for (const t of lines) {
+    const isNew =
+      /^(■|[┏┃┠┗┌│├└]|\d+(의\d+)?\.\s|\d+\)\s|[가-힣]\.\s)/.test(t);
+
+    if (!isNew && out.length) out[out.length - 1] += t;
+    else out.push(/^[가-힣]\.\s/.test(t) ? "  " + t : t);
+  }
+
+  return dec(
+    out
+      .join("\n")
+      .replace(/(?=[┏┌])/g, "\n")
+      .replace(/(?<=[┃│┓┐┨┤])(?=[┃│┠├┗└])/g, "\n")
+      .replace(/(?<=[^\s\d])(?=\d\)\s)/g, "\n  ")
+  );
+};
+
+async function fetchTablesForLaw(lawId, lawName) {
+  try {
+    const data = await lawGet(LAW_API_URL, { target: "law", MST: lawId });
+    const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
+    if (!list.length) return [];
+
+   return list.map((b) => {
+      const no = Number(b["별표번호"] || 0);
+      const sub = Number(b["별표가지번호"] || 0);
+
+      const tag =
+        sub > 0
+          ? `별표 ${no}의${sub}`
+          : `별표 ${no}`;
+
+      const title = String(b["별표제목"] || "").trim();
+      return `[${lawName} ${tag}] ${title}\n${bylText(b)}`;
+    });
+  } catch (err) {
+    return [];
+  }
+}
 
 const LawService = {
   async fetchLawArticles(lawId) {
@@ -788,17 +840,20 @@ const LawService = {
     }
   },
 
-  // 뽑힌 조문 1개만: 위임조문 API(인용/시행령/시행규칙) + 본문 정규식 재인용
-  async collectRefs(law, parsed) {
+ async collectRefs(law, parsed) {
     const lawId = law.lawId;
     const visited = new Set();
     const collected = new Map();
+    const tablesCollected = [];
+
+    // 본 법령의 별표 내용 수집
+    const baseTables = await fetchTablesForLaw(lawId, law.lawName);
+    tablesCollected.push(...baseTables);
 
     const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 3, opt = {}) => {
       if (!articleNum) return;
 
-     const vk = `${key}_${articleNum}`;
-
+      const vk = `${key}_${articleNum}`;
       if (visited.has(vk)) return;
       visited.add(vk);
 
@@ -809,7 +864,14 @@ const LawService = {
       if (collected.has(ck)) return;
       const article = opt.lineText ? { ...found, content: sliceRange(found, opt.lineText) } : found;
       collected.set(ck, { article, opt });
-      if (opt.kind === "시행령" || opt.kind === "시행규칙") return; // 하위법령 내부 인용은 상위법과 구분 불가라 따라가지 않음
+
+      // 인용된 외부 법령의 별표도 함께 수집
+      if (key !== lawId) {
+        const extTables = await fetchTablesForLaw(key, found.lawName);
+        tablesCollected.push(...extTables);
+      }
+
+      if (opt.kind === "시행령" || opt.kind === "시행규칙") return;
 
       const { internal, external } = extractReferences(article.content);
       const totalRefCount = internal.length + external.length;
@@ -837,13 +899,15 @@ const LawService = {
     await collectArticle(lawId, parsed.num);
 
     const selfCk = `${parsed.lawName}_${parsed.num}`;
-    return Array.from(collected.entries())
+    const articleRefs = Array.from(collected.entries())
       .filter(([k]) => k !== selfCk)
       .map(([, { article: a, opt }]) => {
         const label = opt.from ? `${opt.from} ${opt.kind === "인용법령" ? "인용" : "위임"} → ` : "";
         return `[${label}${a.lawName} ${a.num}]\n${a.content}`;
-      })
-      .join("\n\n");
+      });
+
+    // 별표 내용과 조문 참조 내용을 모두 합쳐서 반환 -> 기존 generate 프롬프트의 refContent로 전달됨
+    return [...tablesCollected, ...articleRefs].join("\n\n");
   },
 
   async fetchRandomArticle(law) {
