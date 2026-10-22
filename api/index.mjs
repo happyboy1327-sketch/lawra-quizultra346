@@ -514,7 +514,6 @@ function getDelegatedMap(lawId) {
   return delegatedCache.get(lawId);
 }
 
-// 위임조문 → [{ kind, lawName, num, from, lineText }]  ("제43조부터 제45조"는 API가 "43,44,45"로 풀어줌)
 function delegatedRefs(infos, selfName) {
   const out = [];
   for (const w of toArr(infos)) {
@@ -522,12 +521,9 @@ function delegatedRefs(infos, selfName) {
     const titles = toArr(w["위임법령제목"]);
     for (const e of toArr(w["위임법령조문정보"])) {
       const nums = String(e["위임법령조문번호"] ?? "0").split(",");
-      if (nums.every((n) => n === "0")) continue; // 법령명 링크만 있는 항목
-      
+      if (nums.every((n) => n === "0")) continue;
       const text = e["라인텍스트"] || "";
       const named = text.match(/「([^」]+)」/)?.[1];
-      
-      // 정확한 일치(indexOf) 대신 부분 문자열 포함 관계(findIndex)를 사용하여 매칭 오류 방지
       let idx = 0;
       if (named && titles.length > 1) {
         const foundIdx = titles.findIndex(t => t.includes(named) || named.includes(t));
@@ -536,23 +532,16 @@ function delegatedRefs(infos, selfName) {
         const selfIdx = titles.findIndex(t => t.includes(selfName) || selfName.includes(t));
         if (selfIdx !== -1) idx = selfIdx;
       }
-
       const kind = kinds[idx] ?? kinds[0];
       let targetLawName = titles[idx] ?? titles[0] ?? selfName;
-
-      // 💡 시행령·시행규칙 이름이 단독으로 올 경우 모법 이름(selfName)을 결합하여 조회 오류 방지
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
         targetLawName = `${selfName} ${targetLawName}`;
       } else if (targetLawName && !targetLawName.includes(selfName) && (kind === "시행령" || kind === "시행규칙")) {
         targetLawName = `${selfName} ${targetLawName}`;
       }
-
       if (!["인용법령", "시행령", "시행규칙"].includes(kind)) continue;
-      
       const gajis = String(e["위임법령조문가지번호"] ?? "").split(",");
-      nums.forEach((n, i) =>
-        out.push({ kind, lawName: targetLawName, num: artKey(n, gajis[i]), from: e["조항호목"], lineText: text })
-      );
+      nums.forEach((n, i) => out.push({ kind, lawName: targetLawName, num: artKey(n, gajis[i]), from: e["조항호목"], lineText: text }));
     }
   }
   return out;
