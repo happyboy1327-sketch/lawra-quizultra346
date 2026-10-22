@@ -524,24 +524,35 @@ function delegatedRefs(infos, selfName) {
       if (nums.every((n) => n === "0")) continue;
       const text = e["라인텍스트"] || "";
       const named = text.match(/「([^」]+)」/)?.[1];
-      let idx = 0;
-      if (named && titles.length > 1) {
-        const foundIdx = titles.findIndex(t => t.includes(named) || named.includes(t));
-        if (foundIdx !== -1) idx = foundIdx;
-      } else if (titles.length > 1 && selfName) {
-        const selfIdx = titles.findIndex(t => t.includes(selfName) || selfName.includes(t));
-        if (selfIdx !== -1) idx = selfIdx;
+      
+      let targetLawName = selfName;
+      if (named) {
+        targetLawName = named;
+      } else if (titles.length > 0 && titles[0]) {
+        targetLawName = titles[0];
       }
-      const kind = kinds[idx] ?? kinds[0];
-      let targetLawName = titles[idx] ?? titles[0] ?? selfName;
+
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
         targetLawName = `${selfName} ${targetLawName}`;
-      } else if (targetLawName && !targetLawName.includes(selfName) && (kind === "시행령" || kind === "시행규칙")) {
+      } else if (targetLawName && !targetLawName.includes(selfName) && (kinds.includes("시행령") || kinds.includes("시행규칙"))) {
         targetLawName = `${selfName} ${targetLawName}`;
       }
-      if (!["인용법령", "시행령", "시행규칙"].includes(kind)) continue;
+
+      const kind = kinds[0] || "인용법령";
+      if (!["인용법령", "시행령", "시행규칙", "위임법령"].includes(kind)) continue;
+
       const gajis = String(e["위임법령조문가지번호"] ?? "").split(",");
-      nums.forEach((n, i) => out.push({ kind, lawName: targetLawName, num: artKey(n, gajis[i]), from: e["조항호목"], lineText: text }));
+      nums.forEach((n, i) => {
+        if (n && n !== "0") {
+          out.push({ 
+            kind, 
+            lawName: targetLawName, 
+            num: artKey(n, gajis[i] || "0"), 
+            from: e["조항호목"], 
+            lineText: text 
+          });
+        }
+        });
     }
   }
   return out;
