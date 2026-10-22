@@ -851,7 +851,6 @@ async function fetchSpecificTable(lawId, lawName, targetNo, targetSub) {
           : `별표 ${no}`;
 
       return `[${lawName} ${tag}]\n${dec(bylText(matched))}`;
-    });
   } catch (err) {
     return null;
   }
