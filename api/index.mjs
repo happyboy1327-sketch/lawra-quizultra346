@@ -1336,14 +1336,13 @@ app.get("/api/debug-byl", async (req, res) => {
     return out.join("\n");
   };
 
-  const lawId = "009708";
-  
-  // 1. ID: lawId 로 수정 (따옴표 제거)
-  // 2. OC: "본인의_API_인증키" 추가 필요
-  const data = await lawGet(LAW_API_URL, { 
-    target: "eflaw", 
-    ID: lawId 
-  });
+  const mst = req.query.mst; // 예: /api/debug-byl?mst=123456
+if (!mst) return res.status(400).type("text/plain").send("mst 쿼리 필요");
+
+const data = await lawGet(LAW_API_URL, {
+  target: "law",
+  MST: mst,
+});
 
   const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
   
