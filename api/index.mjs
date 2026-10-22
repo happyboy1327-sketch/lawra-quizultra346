@@ -1366,6 +1366,8 @@ app.get("/api/debug-byl", async (req, res) => {
   const mst = req.query.mst;
   if (!mst) return res.status(400).type("text/plain").send("mst 쿼리 필요");
 
+  const dec = (s) => String(s ?? "").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+
   const bylText = (b) => {
     const lines = toArr(b["별표내용"]).flat(Infinity).map((s) => String(s).trim()).filter(Boolean);
     const out = [];
@@ -1374,23 +1376,25 @@ app.get("/api/debug-byl", async (req, res) => {
       if (!isNew && out.length) out[out.length - 1] += t;
       else out.push(/^[가-힣]\.\s/.test(t) ? "  " + t : t);
     }
-    return out.join("\n");
+    return out
+      .join("\n")
+      .replace(/(?=[┏┌])/g, "\n")
+      .replace(/(?<=[┃│┓┐┨┤])(?=[┃│┠├┗└])/g, "\n")
+      .replace(/(?<=[^\s\d])(?=\d\)\s)/g, "\n  ");
   };
 
   const data = await lawGet(LAW_API_URL, { target: "law", mst });
   const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
 
-  if (!data && !bylText) return res.status(500).type("text/plain").send("잘못된 주소");
   if (!list.length) {
     return res.type("text/plain").send("별표 없음\n" + JSON.stringify(data).slice(0, 500));
   }
 
   res.type("text/plain").send(
     list.map((b) => {
-      const no = Number(b["별표번호"]);
-      const sub = Number(b["별표가지번호"] || 0);
-      const label = sub ? `${no}의${sub}` : `${no}`;
-      return `[별표 ${label}] ${b["별표제목"]}\n${bylText(b)}`;
+      const body = bylText(b);
+      const tag = body.match(/\[(별표\s*[^\]]+)\]/)?.[1] ?? `별표 ${Number(b["별표번호"])}`;
+      return `[${tag}] ${dec(b["별표제목"])}\n${body}`;
     }).join("\n\n")
   );
 });
