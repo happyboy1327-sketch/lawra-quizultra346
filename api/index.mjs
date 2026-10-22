@@ -674,7 +674,7 @@ const LawParser = {
     return titleMatch ? `제${titleMatch[1]}조${titleMatch[2] ? `의${titleMatch[2]}` : ""}` : "";
   },
 
-  formatItemLine(no, content, indent = "") {
+  /*formatItemLine(no, content, indent = "") {
     const rawNo = String(no || "").trim();
     let rawContent = String(content || "").trim();
     if (!rawContent && !rawNo) return "";
@@ -693,9 +693,9 @@ const LawParser = {
       }
     }
     return `${indent}${rawContent}`;
-  },
+  },*/
 
-  parseSubItems(container, childKey, noKey, contentKey, nextChildKey, nextNoKey, nextContentKey, indent) {
+  parseSubItems(container, childKey, noKey, contentKey, nextChildKey, nextNoKey, nextContentKey, indent, parentHangNo) {
     if (!container) return [];
     const items = Array.isArray(container[childKey])
       ? container[childKey]
@@ -703,7 +703,19 @@ const LawParser = {
 
     const lines = [];
     items.forEach(item => {
-      const line = this.formatItemLine(item[noKey], item[contentKey], indent);
+      const rawNo = String(item[noKey] || "").trim();
+      const rawContent = String(item[contentKey] || "").trim();
+      
+      let formattedNo = rawNo;
+      if (childKey === "호" && parentHangNo) {
+        formattedNo = `제${parentHangNo}항 제${rawNo}호`;
+      } else if (childKey === "목") {
+        formattedNo = `${rawNo}목`;
+      } else {
+        formattedNo = rawNo.endsWith(".") || rawNo.startsWith("제") ? rawNo : `${rawNo}.`;
+      }
+
+      const line = rawContent ? `${indent}${formattedNo} ${rawContent}` : `${indent}${formattedNo}`;
       if (line) lines.push(line);
 
       if (nextChildKey && item[nextChildKey]) {
@@ -715,7 +727,8 @@ const LawParser = {
           null,
           null,
           null,
-          indent + "  "
+          indent + "  ", 
+          parentHangNo
         );
         lines.push(...subLines);
       }
@@ -752,11 +765,11 @@ const LawParser = {
           if (articleHeader && cleanHText.startsWith(articleHeader)) {
             cleanHText = cleanHText.replace(articleHeader, "").trim();
           }
-          if (cleanHText) hLines.push(this.formatItemLine(hNo, cleanHText, ""));
+          if (cleanHText) hLines.push(hNo ? `제${hNo}항 ${cleanHText}` : cleanHText);
         }
 
         if (h?.["호"]) {
-          const hoLines = this.parseSubItems(h, "호", "호번호", "호내용", "목", "목번호", "목내용", "  ");
+          const hoLines = this.parseSubItems(h, "호", "호번호", "호내용", "목", "목번호", "목내용", "  ", hNo);
           hLines.push(...hoLines);
         }
 
