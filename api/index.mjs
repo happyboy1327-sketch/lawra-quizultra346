@@ -980,7 +980,7 @@ const PROMPTS = {
 ${content}
 
 ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
-위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. **모르면 반드시 [IDK] 특수 토큰을 넣으세요.**
+위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요. **모르면 반드시 [IDK] 특수 토큰을 넣으세요. 단, 헌법 범위는 제외합니다.**
 **추측이나 개인적 견해를 절대로 포함하지 마십시오.** 반드시 순수 JSON만 출력하세요.
 
 
@@ -1205,7 +1205,7 @@ const QuizService = {
     const systemInstruction = `[SYSTEM 지침 - 반드시 준수할 것]
 너는 엄격한 대한민국 법률 퀴즈 생성기다. 추측이나 개인적 견해를 절대로 포함하지 마.
 제공된 법률 본문(Context)의 내용이 모호하거나, 데이터 부족으로 명확한 퀴즈(선지 및 정답)를 구성할 수 없다면, 절대 퀴즈를 허위로 지어내지 마라.
-만약 퀴즈 출제가 불가능하다고 판단되면, 다른 JSON 필드를 모두 무시하고 정확히 아래의 JSON 형태로만 응답하고 생성을 즉시 멈춰라. 스톱 토큰 [IDK]가 발동되어야 한다.
+만약 퀴즈 출제가 불가능하다고 판단되면, 다른 JSON 필드를 모두 무시하고 정확히 아래의 JSON 형태로만 응답하고 생성을 즉시 멈춰라. 법령이 헌법이 아닌 경우에만 스톱 토큰 [IDK]가 발동되어야 한다.
 
 출제 불가 시 반환할 JSON 예시:
 {
@@ -1222,7 +1222,7 @@ const QuizService = {
     try {
       const rawQuiz = await this.requestMistral(finalPrompt, "xhigh");
       
-      if (!rawQuiz || (typeof rawQuiz === 'object' && Object.keys(rawQuiz).length === 0) || rawQuiz === "{}") {
+      if (!rawQuiz || Object.keys(rawQuiz).length === 0 || rawQuiz === "{}") {
         console.warn(`    └ [1단계 즉시 컷] 미스트랄이 첫 토큰부터 스톱 시퀀스([IDK])를 발동하여 응답을 거부했습니다. (${article.lawName} ${article.num})`);
         return null;
       }
