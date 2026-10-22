@@ -1363,9 +1363,9 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
 });
 
 app.get("/api/debug-byl", async (req, res) => {
-  const mst = req.query.mst;
-  if (!mst) return res.status(400).type("text/plain").send("mst 쿼리 필요");
-
+  return res.type("text/plain").send("DEBUG-BYL TEST 777");
+});
+/*
   const dec = (s) =>
     String(s ?? "")
       .replace(/&lt;/g, "<")
@@ -1427,7 +1427,7 @@ app.get("/api/debug-byl", async (req, res) => {
       })
       .join("\n\n")
   );
-});
+});*/
 
 app.use(express.static(path.join(__dirname, "..")));
 app.get("/", (req, res) => {
