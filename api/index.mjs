@@ -505,7 +505,7 @@ function getDelegatedMap(lawId) {
             delegatedCache.delete(lawId);
             return new Map();
           }
-          await Utils.sleep(2000);
+          await Utils.sleep(1100);
         }
       }
     })();
@@ -1238,7 +1238,7 @@ const QuizService = {
       return Utils.normalizeQuiz(rawQuiz);
     } catch (err) {
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
-        await Utils.sleep(1500);
+        await Utils.sleep(1200);
         return this.generateQuiz(article, retriesLeft - 1);
       }
       console.error("Mistral 퀴즈 생성 API 오류:", err.message);
