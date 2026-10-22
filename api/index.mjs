@@ -805,25 +805,55 @@ const bylText = (b) => {
   );
 };
 
-async function fetchTablesForLaw(lawId, lawName) {
+function extractTableReferences(content) {
+  if (!content) return [];
+  const regex = /별표\s*(\d+)(?:의(\d+))?/g;
+  const matches = [...content.matchAll(regex)];
+  const results = [];
+  
+  for (const m of matches) {
+    results.push({
+      no: Number(m[1]),
+      sub: m[2] ? Number(m[2]) : 0
+    });
+  }
+  
+  // 중복 제거
+  const unique = [];
+  const set = new Set();
+  for (const r of results) {
+    const key = `${r.no}_${r.sub}`;
+    if (!set.has(key)) {
+      set.add(key);
+      unique.push(r);
+    }
+  }
+  return unique;
+}
+
+async function fetchSpecificTable(lawId, lawName, targetNo, targetSub) {
   try {
     const data = await lawGet(LAW_API_URL, { target: "law", MST: lawId });
     const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
-    if (!list.length) return [];
+    if (!list.length) return null;
 
-   return list.map((b) => {
+   const matched = list.find((b) => {
       const no = Number(b["별표번호"] || 0);
       const sub = Number(b["별표가지번호"] || 0);
+      return no === targetNo && sub === targetSub;
+    });
+
+    if (!matched) return null;
 
       const tag =
-        sub > 0
+        targetSub > 0
           ? `별표 ${no}의${sub}`
           : `별표 ${no}`;
 
-      return `[${lawName} ${tag}]\n${dec(bylText(b))}`;
+      return `[${lawName} ${tag}]\n${dec(bylText(matched))}`;
     });
   } catch (err) {
-    return [];
+    return null;
   }
 }
 
@@ -845,9 +875,12 @@ const LawService = {
     const collected = new Map();
     const tablesCollected = [];
 
-    // 본 법령의 별표 내용 수집
-    const baseTables = await fetchTablesForLaw(lawId, law.lawName);
-    tablesCollected.push(...baseTables);
+   // 💡 [핵심] 출제 조문 본문에서 인용된 "별표 N"이 있는지 검사 후 해당 별표만 수집
+    const tableRefs = extractTableReferences(parsed.content);
+    for (const ref of tableRefs) {
+      const tableText = await fetchSpecificTable(lawId, law.lawName, ref.no, ref.sub);
+      if (tableText) tablesCollected.push(tableText);
+    }
 
     const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 3, opt = {}) => {
       if (!articleNum) return;
@@ -864,10 +897,13 @@ const LawService = {
       const article = opt.lineText ? { ...found, content: sliceRange(found, opt.lineText) } : found;
       collected.set(ck, { article, opt });
 
-      // 인용된 외부 법령의 별표도 함께 수집
-      if (key !== lawId) {
-        const extTables = await fetchTablesForLaw(key, found.lawName);
-        tablesCollected.push(...extTables);
+     // 💡 [핵심] 인용·위임된 하위/외부 조문 내용 안에서도 "별표 N"이 언급되어 있다면 해당 별표 추적 수집
+      const extTableRefs = extractTableReferences(article.content);
+      for (const ref of extTableRefs) {
+        const extTableText = await fetchSpecificTable(key, found.lawName, ref.no, ref.sub);
+        if (extTableText && !tablesCollected.includes(extTableText)) {
+          tablesCollected.push(extTableText);
+        }
       }
 
       if (opt.kind === "시행령" || opt.kind === "시행규칙") return;
