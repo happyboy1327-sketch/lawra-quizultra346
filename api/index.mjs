@@ -883,14 +883,14 @@ const LawService = {
     const collected = new Map();
     const tablesCollected = [];
 
-   // 💡 [핵심] 출제 조문 본문에서 인용된 "별표 N"이 있는지 검사 후 해당 별표만 수집
+    // 💡 별표 수집 병렬화
     const tableRefs = extractTableReferences(parsed.content);
-    for (const ref of tableRefs) {
+    await Promise.all(tableRefs.map(async (ref) => {
       const tableText = await fetchSpecificTable(lawId, law.lawName, ref.no, ref.sub);
       if (tableText) tablesCollected.push(tableText);
-    }
+    }));
 
-    const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 3, opt = {}) => {
+    const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 2, opt = {}) => { // 💡 깊이 제한을 1로 낮춰 속도 극대화
       if (!articleNum) return;
 
       const vk = `${key}_${articleNum}`;
@@ -905,40 +905,29 @@ const LawService = {
       const article = opt.lineText ? { ...found, content: sliceRange(found, opt.lineText) } : found;
       collected.set(ck, { article, opt });
 
-     // 💡 [핵심] 인용·위임된 하위/외부 조문 내용 안에서도 "별표 N"이 언급되어 있다면 해당 별표 추적 수집
-      const extTableRefs = extractTableReferences(article.content);
-      for (const ref of extTableRefs) {
-        const extTableText = await fetchSpecificTable(key, found.lawName, ref.no, ref.sub);
-        if (extTableText && !tablesCollected.includes(extTableText)) {
-          tablesCollected.push(extTableText);
-        }
-      }
-
-      if (opt.kind === "시행령" || opt.kind === "시행규칙") return;
+      if (opt.kind === "시행령" || opt.kind === "시행규칙" || currentDepth >= maxDepth) return;
 
       const { internal, external } = extractReferences(article.content);
-      const totalRefCount = internal.length + external.length;
-
-      const effectiveMaxDepth = totalRefCount === 1 ? currentDepth + 1 : maxDepth;
-      if (currentDepth >= effectiveMaxDepth) return;
-
-      for (const refNum of internal) {
-        await collectArticle(key, refNum, currentDepth + 1, effectiveMaxDepth);
-      }
-
-      for (const ext of external) {
+      
+      // 💡 내부/외부 참조 조문 수집을 병렬 처리하여 대기 시간 단축
+      const internalPromises = internal.map(refNum => collectArticle(key, refNum, currentDepth + 1, maxDepth));
+      const externalPromises = external.map(async (ext) => {
         const targetLawId = await getLawIdByName(ext.lawName);
         if (targetLawId && targetLawId !== key) {
-          await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, effectiveMaxDepth);
+          await collectArticle(targetLawId, ext.articleNum, currentDepth + 1, maxDepth);
         }
-      }
+      });
+
+      await Promise.all([...internalPromises, ...externalPromises]);
     };
 
     const dmap = await getDelegatedMap(lawId);
-    for (const r of delegatedRefs(dmap.get(parsed.num), law.lawName)) {
+    const delegatedTasks = delegatedRefs(dmap.get(parsed.num), law.lawName).map(async (r) => {
       const key = r.lawName === law.lawName ? lawId : await getLawIdByName(r.lawName);
-      if (key) await collectArticle(key, r.num, 1, 3, r);
-    }
+      if (key) await collectArticle(key, r.num, 1, 1, r);
+    });
+    
+    await Promise.all(delegatedTasks);
     await collectArticle(lawId, parsed.num);
 
     const selfCk = `${parsed.lawName}_${parsed.num}`;
@@ -949,7 +938,6 @@ const LawService = {
         return `[${label}${a.lawName} ${a.num}]\n${a.content}`;
       });
 
-    // 별표 내용과 조문 참조 내용을 모두 합쳐서 반환 -> 기존 generate 프롬프트의 refContent로 전달됨
     return [...tablesCollected, ...articleRefs].join("\n\n");
   },
 
