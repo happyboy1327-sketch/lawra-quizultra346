@@ -831,30 +831,40 @@ function extractTableReferences(content) {
   return unique;
 }
 
+
 async function fetchSpecificTable(lawId, lawName, targetNo, targetSub) {
   try {
-    const data = await lawGet(LAW_API_URL, { target: "law", MST: lawId });
+    const data = await lawGet(LAW_API_URL, {
+      target: "law",
+      MST: lawId,
+    });
+
     const list = toArr(data?.["법령"]?.["별표"]?.["별표단위"]);
     if (!list.length) return null;
 
-   const matched = list.find((b) => {
+    const matched = list.find((b) => {
       const no = Number(b["별표번호"] || 0);
       const sub = Number(b["별표가지번호"] || 0);
-      return no === targetNo && sub === targetSub;
+
+      return no === Number(targetNo) && sub === Number(targetSub);
     });
 
     if (!matched) return null;
 
-      const tag =
-        targetSub > 0
-          ? `별표 ${no}의${sub}`
-          : `별표 ${no}`;
+    const no = Number(matched["별표번호"] || 0);
+    const sub = Number(matched["별표가지번호"] || 0);
 
-      return `[${lawName} ${tag}]\n${dec(bylText(matched))}`;
+    const tag =
+      sub > 0
+        ? `별표 ${no}의${sub}`
+        : `별표 ${no}`;
+
+    return `[${lawName} ${tag}]\n${dec(bylText(matched))}`;
   } catch (err) {
     return null;
   }
 }
+
 
 const LawService = {
   async fetchLawArticles(lawId) {
