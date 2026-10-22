@@ -538,7 +538,7 @@ function delegatedRefs(infos, selfName) {
       }
 
       const kind = kinds[idx] ?? kinds[0];
-      const targetLawName = titles[idx] ?? titles[0] ?? selfName;
+      let targetLawName = titles[idx] ?? titles[0] ?? selfName;
 
       // 💡 시행령·시행규칙 이름이 단독으로 올 경우 모법 이름(selfName)을 결합하여 조회 오류 방지
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
