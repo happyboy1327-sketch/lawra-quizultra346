@@ -1420,12 +1420,10 @@ app.get("/api/debug-byl", async (req, res) => {
             ? `별표 ${no}의${sub}`
             : `별표 ${no}`;
 
-        return JSON.stringify({
-  no: b["별표번호"],
-  sub: b["별표가지번호"],
-  noNum: Number(b["별표번호"]),
-  subNum: Number(b["별표가지번호"])
-}, null, 2);
+        return require("util").inspect(b, {
+  depth: null,
+  maxArrayLength: null
+});
       })
       .join("\n\n")
   );
