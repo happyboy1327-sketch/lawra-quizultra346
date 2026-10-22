@@ -781,28 +781,22 @@ const dec = (s) =>
     .replace(/&gt;/g, ">");
 
 const bylText = (b) => {
-  const lines = toArr(b["별표내용"])
-    .flat(Infinity)
-    .map((s) => String(s).trim())
+  const rawContent = toArr(b["별표내용"]).flat(Infinity);
+  const lines = rawContent
+    .map((s) => String(s || "").replace(/<[^>]*>/g, "").trim())
     .filter(Boolean);
 
-  const out = [];
+  // 표 테두리 박스 기호로 인해 LLM이 텍스트를 오인하는 현상을 방지하기 위해 
+  // 불필요한 박스 기호를 제거하고 줄바꿈을 정돈합니다.
+  const cleaned = lines
+    .join("\n")
+    .replace(/[┏┓┗┛━┃┣┫┳┻╋│├└┘┌┐]/g, " ") // 박스 테두리 문자를 공백으로 치환하여 단어 붙음 방지
+    .replace(/[■□◆◇ㆍ]/g, "-")            // 특수 기호를 통일감 있는 불릿으로 정리
+    .replace(/[ \t]+/g, " ")               // 연속된 공백 축소
+    .replace(/\n\s*\n/g, "\n")             // 불필요한 빈 줄 제거
+    .trim();
 
-  for (const t of lines) {
-    const isNew =
-      /^(■|[┏┃┠┗┌│├└]|\d+(의\d+)?\.\s|\d+\)\s|[가-힣]\.\s)/.test(t);
-
-    if (!isNew && out.length) out[out.length - 1] += t;
-    else out.push(/^[가-힣]\.\s/.test(t) ? "  " + t : t);
-  }
-
-  return dec(
-    out
-      .join("\n")
-      .replace(/(?=[┏┌])/g, "\n")
-      .replace(/(?<=[┃│┓┐┨┤])(?=[┃│┠├┗└])/g, "\n")
-      .replace(/(?<=[^\s\d])(?=\d\)\s)/g, "\n  ")
-  );
+  return dec(cleaned);
 };
 
 function extractTableReferences(content) {
