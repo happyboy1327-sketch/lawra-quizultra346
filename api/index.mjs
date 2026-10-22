@@ -820,8 +820,7 @@ async function fetchTablesForLaw(lawId, lawName) {
           ? `별표 ${no}의${sub}`
           : `별표 ${no}`;
 
-      const title = String(b["별표제목"] || "").trim();
-      return `[${lawName} ${tag}] ${title}\n${bylText(b)}`;
+      return `[${lawName} ${tag}]\n${dec(bylText(b))}`;
     });
   } catch (err) {
     return [];
