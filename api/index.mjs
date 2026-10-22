@@ -1324,7 +1324,7 @@ app.get("/api/mistral-models", async (req, res) => {
   }
 });
 
-app.get("/api/debug-byl", async (req, res) => {
+/*app.get("/api/debug-byl", async (req, res) => {
   const bylText = (b) => {
     const lines = toArr(b["별표내용"]).flat(Infinity).map((s) => String(s).trim()).filter(Boolean);
     const out = [];
@@ -1351,7 +1351,7 @@ const data = await lawGet(LAW_API_URL, {
   }
 
   res.type("text/plain").send(list.map((b) => `[별표 ${Number(b["별표번호"])}] ${b["별표제목"]}\n${bylText(b)}`).join("\n\n"));
-});
+});*/
 
 
 app.get("/api/debug/lawname/:mst", (req, res) => {
