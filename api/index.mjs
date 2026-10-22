@@ -23,7 +23,7 @@ const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
 const MISTRAL_MIN_INTERVAL_MS = 800;
 
 const VALID_LAW_IDS = [
-  { lawId: "001444", lawName: "대한민국헌법" },
+  { lawId: "001444", lawName: "대한민국 헌법" },
   { lawId: "001706", lawName: "민법" },
   { lawId: "001692", lawName: "형법" },
   { lawId: "009318", lawName: "전자상거래 등에서의 소비자보호에 관한 법률" },
