@@ -1552,6 +1552,36 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
     query: req.query
   });
 });
+app.post("/api/fine-tuning/new", async (req, res) => {
+  try {
+    const { trainingFiles, hyperparameters } = req.body;
+    
+    if (!trainingFiles) {
+      return res.status(400).json({ 
+        error: "학습 파일 정보 누락", 
+        serverError: true 
+      });
+    }
+
+    const response = await client.fineTuning.jobs.create({
+      model: MODEL,
+      trainingFiles: trainingFiles,
+      hyperparameters: hyperparameters || { trainingSteps: 100 },
+    });
+
+    return res.json({ 
+      response, 
+      serverError: true 
+    });
+  } catch (err) {
+    console.error("파인튜닝 생성 오류:", err.message);
+    return res.status(500).json({ 
+      error: err.message, 
+      serverError: true 
+    });
+  }
+});
+
 
 app.get("/api/debug-byl", async (req, res) => {
   const mst = req.query.mst;
