@@ -1553,43 +1553,7 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
   });
 });
 
-app.get("/api/fine-tuning/new", async (req, res) => {
-  try {
-    const KEY = process.env.LAW_QUIZ_MISTRAL_KEY;
-    const headers = { Authorization: `Bearer ${KEY}` };
 
-    // 1. Studio의 모든 파일 목록
-    const filesRes = await fetch("https://api.mistral.ai/v1/files", { headers });
-    if (!filesRes.ok) {
-      return res.status(filesRes.status).json({ error: await filesRes.text() });
-    }
-    const { data: files } = await filesRes.json();
-
-    if (!files?.length) {
-      return res.status(404).json({ error: "업로드된 파일이 없습니다." });
-    }
-
-    // 2. 전부 학습 파일로 잡 생성
-    const jobRes = await fetch("https://api.mistral.ai/v1/fine_tuning/jobs", {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "ministral-8b-latest",
-        training_files: files.map(f => f.id),
-        hyperparameters: { training_steps: 10, learning_rate: 0.0001 },
-      }),
-    });
-    const job = await jobRes.json();
-    if (!jobRes.ok) {
-      return res.status(jobRes.status).json({ error: job });
-    }
-
-    res.json({ jobId: job.id, status: job.status, fileCount: files.length });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 app.get("/api/debug-byl", async (req, res) => {
   const mst = req.query.mst;
