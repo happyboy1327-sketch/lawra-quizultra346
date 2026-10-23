@@ -1421,6 +1421,12 @@ if (!step1a.valid) {
       // 재검증
       const reStep1 = this.validateRequiredFields(correctedQuiz);
       if (!reStep1.valid) return { valid: false, step: 1, reason: `재검증 필수 필드 실패: ${reStep1.reason}`, quiz: correctedQuiz };
+
+      const reStep1a = this.validateExplanationNumbers(correctedQuiz, article, refContent);
+      if (!reStep1a.valid) {
+      console.warn(`  └ [재검증 1-a단계 실패] ${reStep1a.reason}`);
+      return { valid: false, step: 1, reason: reStep1a.reason, quiz: correctedQuiz };
+      }
       
       const reStep2 = await this.validateBlindSolver(correctedQuiz, article, refContent);
       if (!reStep2.valid) return { valid: false, step: 2, reason: `재검증 블라인드 솔버 실패: ${reStep2.reason}`, quiz: correctedQuiz };
