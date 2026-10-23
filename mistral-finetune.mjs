@@ -99,6 +99,11 @@ async function api(pathname, { method = "GET", body, headers = {} } = {}) {
   return data;
 }
 
+// Only explicitly reviewed examples may be used for fine-tuning.
+function isApprovedForTraining(example) {
+  return example?.trainingApproved === true;
+}
+
 function validateQuiz(example, index) {
   const prefix = `examples[${index}]`;
   const q = example?.quiz;
