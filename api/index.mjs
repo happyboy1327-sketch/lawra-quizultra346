@@ -1552,7 +1552,7 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
     query: req.query
   });
 });
-app.post("/api/fine-tuning/new", async (req, res) => {
+app.get("/api/fine-tuning/new", async (req, res) => {
   try {
     const { trainingFiles, hyperparameters } = req.body;
     
