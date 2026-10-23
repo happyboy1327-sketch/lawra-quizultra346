@@ -1242,8 +1242,8 @@ const QuizService = {
       model: MODEL,
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.0,
-      top_p: 0.0,
+      temperature: isConstitution ? 0.1 : 0.0, 
+      top_p: isConstitution ? 0.55 : 0.0,
       stop: ["[IDK]", "</s>"],
       reasoning_effort: reasoningEffort,
     });
