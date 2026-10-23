@@ -23,8 +23,18 @@ for (const doc of snapshot.docs) {
   const quizzes = Array.isArray(data.quizzes) ? data.quizzes :
     data.quizzes && typeof data.quizzes === "object" ? Object.values(data.quizzes) : [];
   for (const quiz of quizzes) {
-    if (!quiz || typeof quiz !== "object" || typeof quiz.question !== "string" ||
-        typeof quiz.answer !== "string" || !Array.isArray(quiz.options)) { invalidCount++; continue; }
+    const correct = Array.isArray(quiz?.options)
+      ? quiz.options.filter((option) => option?.is_correct === true)
+      : [];
+    const valid = quiz && typeof quiz === "object" &&
+      typeof quiz.question === "string" && quiz.question.trim() &&
+      typeof quiz.answer === "string" && quiz.answer.trim() &&
+      typeof quiz.explanation?.string === "string" && quiz.explanation.string.trim() &&
+      quiz.explanation?.Boolean === true &&
+      Array.isArray(quiz.options) && quiz.options.length === 4 &&
+      correct.length === 1 && correct[0].text?.trim() === quiz.answer.trim() &&
+      !JSON.stringify(quiz).includes("[IDK]");
+    if (!valid) { invalidCount++; continue; }
     // API는 3단계 검증을 통과한 퀴즈만 law_quizzes에 저장한다.
     examples.push({ trainingApproved: true, firestoreDocumentId: doc.id, createdAt: data.createdAt ?? null, quiz });
   }
