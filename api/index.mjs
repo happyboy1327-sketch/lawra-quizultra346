@@ -1557,36 +1557,26 @@ app.get("/api/fine-tuning/new", async (req, res) => {
   try {
     const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
 
-    // 1. Studio의 모든 파일 가져오기
-    const allFiles = [];
-    let page = await client.files.list();
-    allFiles.push(...page.data);
-    while (page.hasNext?.()) {
-      page = await page.getNext();
-      allFiles.push(...page.data);
-    }
+    // 1. Studio의 모든 파일 (2.x는 list에 빈 객체 필요)
+    const { data: files } = await client.files.list({});
 
-    if (allFiles.length === 0) {
+    if (!files?.length) {
       return res.status(404).json({ error: "Studio에 업로드된 파일이 없습니다." });
     }
 
-    // 2. 전부 학습 파일로 지정해서 잡 생성
+    // 2. 잡 생성 — 2.x 메서드명
     const job = await client.fineTuning.createJob({
       model: "ministral-8b-latest",
-      trainingFiles: allFiles.map(f => ({ fileId: f.id })),
+      trainingFiles: files.map(f => ({ fileId: f.id })),
       hyperparameters: {
         trainingSteps: 10,
         learningRate: 0.0001,
       },
     });
 
-    res.json({
-      jobId: job.id,
-      status: job.status,
-      fileCount: allFiles.length,
-    });
+    res.json({ jobId: job.id, status: job.status, fileCount: files.length });
   } catch (err) {
-    console.error("fine-tuning error:", err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
