@@ -1238,6 +1238,7 @@ const QuizService = {
 
   async requestMistral(prompt, reasoningEffort) {
     await this.throttle();
+    const isConstitution = article.lawName.includes("헌법") || article.lawId === "001444";
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
