@@ -27,7 +27,7 @@ jobs:
           cache: npm
 
       - name: 의존성 설치
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: API 키 확인
         env:
