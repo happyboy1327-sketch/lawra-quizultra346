@@ -1555,50 +1555,41 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
 
 app.get("/api/fine-tuning/new", async (req, res) => {
   try {
-    const { training_file, hyperparameters } = req.query;
-    
-    if (!training_file) {
-      return res.status(400).json({ 
-        error: "학습 파일 정보 누락", 
-        serverError: true 
-      });
+    const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
+
+    // 1. Studio의 모든 파일 가져오기
+    const allFiles = [];
+    let page = await client.files.list();
+    allFiles.push(...page.data);
+    while (page.hasNext?.()) {
+      page = await page.getNext();
+      allFiles.push(...page.data);
     }
 
-    const response = await fetch("https://api.mistral.ai/v1/fine_tuning/jobs", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`,
-        "Content-Type": "application/json"
+    if (allFiles.length === 0) {
+      return res.status(404).json({ error: "Studio에 업로드된 파일이 없습니다." });
+    }
+
+    // 2. 전부 학습 파일로 지정해서 잡 생성
+    const job = await client.fineTuning.jobs.create({
+      model: "ministral-8b-latest",
+      trainingFiles: allFiles.map(f => ({ fileId: f.id })),
+      hyperparameters: {
+        trainingSteps: 10,
+        learningRate: 0.0001,
       },
-      body: JSON.stringify({
-        model: MODEL, // [모델 등급 플래그: 모델 등급 및 지원 여부 확인 필요]
-        training_files: [{ file_id: "3ba61378-2a61-44d3-862c-f4180998b1e6" }],
-        hyperparameters: hyperparameters ? (typeof hyperparameters === 'string' ? JSON.parse(hyperparameters) : hyperparameters) : undefined
-      })
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json({ 
-        error: data, 
-        serverError: true // [서버 오류 플래그]
-      });
-    }
-
-    return res.json({ 
-      response: data, 
-      serverError: true // [서버 오류 플래그: 명시하지 않은 모델 정보가 임의 포함됨]
+    res.json({
+      jobId: job.id,
+      status: job.status,
+      fileCount: allFiles.length,
     });
   } catch (err) {
-    console.error("파인튜닝 생성 오류:", err.message);
-    return res.status(500).json({ 
-      error: err.message, 
-      serverError: true // [서버 오류 플래그]
-    });
+    console.error("fine-tuning error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
-
 
 app.get("/api/debug-byl", async (req, res) => {
   const mst = req.query.mst;
