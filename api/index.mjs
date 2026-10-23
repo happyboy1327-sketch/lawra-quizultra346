@@ -1266,20 +1266,20 @@ const QuizService = {
     }
 },
 
-  async generateQuiz(article, retriesLeft = 2) {
+    async generateQuiz(article, retriesLeft = 2) {
     if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30)
     { 
       console.log('너무 짧거나 법령 매우 부실. 출제 불가');
       return null;
     }
-
+    
+    // 헌법 여부 판별
     const isConstitution = article.lawName.includes("헌법") || article.lawId === "001444";
     
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
     const userPrompt = PROMPTS.generate(article, content, refContent);
 
-    // 1. json_object 포맷을 깨지 않으면서 [IDK]를 유도하는 시스템 지침 정의
     const systemInstruction = `[SYSTEM 지침 - 반드시 준수할 것]
 너는 엄격한 대한민국 법률 퀴즈 생성기다. 추측이나 개인적 견해, 일반 불문율, 근거없고 무효한 법리를 절대로 포함하지 마. 없는 문장을 꾸며내어 억지로 절대로 만들지마. 실존하는 법령 문장만 ctrl+c, ctrl+v하고, 실제 법리해석을 꺼내.
 제공된 법률 본문(Context)의 내용이 모호하거나, 전혀 모르거나, 데이터 부족으로 명확한 퀴즈(선지 및 정답)를 구성할 수 없다면, 절대 퀴즈를 허위로 지어내지 마라.
@@ -1294,7 +1294,6 @@ const QuizService = {
 [USER 요청]
 `;
 
-    // 2. 기존 requestMistral 구조(string 입력)에 맞게 프롬프트를 하나로 결합
     const finalPrompt = systemInstruction + userPrompt;
 
     try {
@@ -1303,9 +1302,8 @@ const QuizService = {
         model: MODEL,
         responseFormat: { type: "json_object" },
         messages: [{ role: "user", content: finalPrompt }],
-        // 💡 헌법인데 기권 본능(0.0) 때문에 깡통 응답이 나오는 걸 방지하기 위해 온도를 미세하게 조정
-        temperature: isConstitution ? 0.1 : 0.0, 
-        top_p: isConstitution ? 0.95 : 0.0,
+        temperature: 0.0, // 💡 무조건 원본 스펙인 0.0으로 고정
+        top_p: 0.0,       // 💡 무조건 원본 스펙인 0.0으로 고정
         stop: isConstitution ? ["</s>"] : ["[IDK]", "</s>"],
         reasoning_effort: "xhigh",
       });
@@ -1322,7 +1320,7 @@ const QuizService = {
           .trim();
         rawQuiz = JSON.parse(sanitized);
       } catch (error) {
-        // 💡 헌법인데 단순 파싱 에러가 난 경우 리트라이 기회 부여
+        // 헌법인데 단순 문자열 꼬임 파싱 에러인 경우 루프 내 재시도
         if (isConstitution && retriesLeft > 0) {
           console.warn(`[헌법 파싱 에러 재시도] ${article.lawName} 제${article.num}조`);
           await Utils.sleep(1000);
@@ -1332,15 +1330,29 @@ const QuizService = {
       }
       
       const isEmptyQuiz = !rawQuiz || Object.keys(rawQuiz).length === 0;
+      // 💡 모델이 꼼수로 뱉는 에러 응답 객체({"error": "..."} 혹은 "idk" 포함) 판별 가드 추가
+      const isErrorResponse = rawQuiz && (rawQuiz.error || rawQuiz.message || !rawQuiz.question);
       
-      if (isEmptyQuiz && !isConstitution) {
-        console.warn(`    └ [1단계 즉시 컷] 미스트랄이 첫 토큰부터 스톱 시퀀스([IDK])를 발동하여 응답을 거부했습니다. (${article.lawName} ${article.num})`);
+      // 💡 1단계: 헌법이 '아닐 때만' 텅 비었거나 에러 성격의 객체는 즉시 패스(탈락) 처리
+      if ((isEmptyQuiz || isErrorResponse) && !isConstitution) {
+        console.warn(`    └ [1단계 즉시 컷] 미스트랄이 스톱 시퀀스 또는 에러 객체([IDK])를 발동하여 응답을 거부했습니다. (${article.lawName} ${article.num})`);
         return null;
       }
       
-      // 1. 객체 유형에 상관없이 안전하게 문자열로 변환하여 [IDK] 검사
-      const quizString = typeof rawQuiz === 'string' ? rawQuiz : JSON.stringify(rawQuiz);
+      // 💡 2단계 [핵심]: 헌법인데 깡통이거나 `question`이 누락된 불량 객체가 나왔을 경우
+      // 절대로 null을 리턴해서 슬롯 자체를 죽이지 말고, 다음 슬롯 재시도 기회(retriesLeft)를 강제로 소모시키며 백스테이지 재호출
+      if ((isEmptyQuiz || isErrorResponse) && isConstitution) {
+        if (retriesLeft > 0) {
+          console.warn(`[헌법 출제 누락 감지 - 재시도 수행] 대상: ${article.lawName} 제${article.num}조 (남은 시도: ${retriesLeft}회)`);
+          await Utils.sleep(1000);
+          return this.generateQuiz(article, retriesLeft - 1);
+        }
+        return null; // 모든 기회를 소모한 경우에만 안전하게 탈출
+      }
       
+      const quizString = JSON.stringify(rawQuiz);
+      
+      // 3단계: 일반 법령일 때 문자열 내부 검사 처리
       if (!isConstitution && quizString && quizString.includes("[IDK]")) {
         console.warn("법률 근거 부족으로 퀴즈 출제 스킵 ([IDK] 감지)");
         return null;
