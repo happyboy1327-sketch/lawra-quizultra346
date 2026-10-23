@@ -1272,6 +1272,8 @@ const QuizService = {
       console.log('너무 짧거나 법령 매우 부실. 출제 불가');
       return null;
     }
+
+    const isConstitution = article.lawName.includes("헌법") || article.lawId === "001444";
     
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
@@ -1297,8 +1299,9 @@ const QuizService = {
 
     try {
       const rawQuiz = await this.requestMistral(finalPrompt, "xhigh");
+      const isEmptyQuiz = !rawQuiz || Object.keys(rawQuiz).length === 0;
       
-      if (!rawQuiz || Object.keys(rawQuiz).length === 0 || rawQuiz === "{}") {
+      if (isEmptyQuiz && !isConstitution) {
         console.warn(`    └ [1단계 즉시 컷] 미스트랄이 첫 토큰부터 스톱 시퀀스([IDK])를 발동하여 응답을 거부했습니다. (${article.lawName} ${article.num})`);
         return null;
       }
@@ -1306,7 +1309,7 @@ const QuizService = {
       // 1. 객체 유형에 상관없이 안전하게 문자열로 변환하여 [IDK] 검사
       const quizString = typeof rawQuiz === 'string' ? rawQuiz : JSON.stringify(rawQuiz);
       
-      if (quizString && quizString.includes("[IDK]")) {
+      if (!isConstitution && quizString && quizString.includes("[IDK]")) {
         console.warn("법률 근거 부족으로 퀴즈 출제 스킵 ([IDK] 감지)");
         return null;
       }
