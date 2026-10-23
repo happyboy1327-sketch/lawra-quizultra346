@@ -1238,13 +1238,12 @@ const QuizService = {
 
   async requestMistral(prompt, reasoningEffort) {
     await this.throttle();
-    const isConstitution = article.lawName.includes("헌법") || article.lawId === "001444";
     const response = await client.chat.complete({
       model: MODEL,
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
-      temperature: isConstitution ? 0.1 : 0.0, 
-      top_p: isConstitution ? 0.55 : 0.0,
+      temperature: 0.1, 
+      top_p: 0.0,
       stop: ["[IDK]", "</s>"],
       reasoning_effort: reasoningEffort,
     });
@@ -1299,7 +1298,39 @@ const QuizService = {
     const finalPrompt = systemInstruction + userPrompt;
 
     try {
-      const rawQuiz = await this.requestMistral(finalPrompt, "xhigh");
+      await this.throttle();
+      const response = await client.chat.complete({
+        model: MODEL,
+        responseFormat: { type: "json_object" },
+        messages: [{ role: "user", content: finalPrompt }],
+        // 💡 헌법인데 기권 본능(0.0) 때문에 깡통 응답이 나오는 걸 방지하기 위해 온도를 미세하게 조정
+        temperature: isConstitution ? 0.1 : 0.0, 
+        top_p: isConstitution ? 0.95 : 0.0,
+        stop: isConstitution ? ["</s>"] : ["[IDK]", "</s>"],
+        reasoning_effort: "xhigh",
+      });
+      
+      let contentRes = response?.choices?.[0]?.message?.content;
+      if (typeof contentRes !== "string") return null;
+
+      let rawQuiz = null;
+      try {
+        const sanitized = contentRes
+          .replace(/^\s*```json\s*/i, "")
+          .replace(/^\s*```\s*/i, "")
+          .replace(/\s*```\s*$/i, "")
+          .trim();
+        rawQuiz = JSON.parse(sanitized);
+      } catch (error) {
+        // 💡 헌법인데 단순 파싱 에러가 난 경우 리트라이 기회 부여
+        if (isConstitution && retriesLeft > 0) {
+          console.warn(`[헌법 파싱 에러 재시도] ${article.lawName} 제${article.num}조`);
+          await Utils.sleep(1000);
+          return this.generateQuiz(article, retriesLeft - 1);
+        }
+        return null; 
+      }
+      
       const isEmptyQuiz = !rawQuiz || Object.keys(rawQuiz).length === 0;
       
       if (isEmptyQuiz && !isConstitution) {
