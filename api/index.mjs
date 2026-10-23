@@ -936,7 +936,7 @@ const LawService = {
       if (tableText) tablesCollected.push(tableText);
     }));
 
-    const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 2, opt = {}) => { // 💡 깊이 제한을 1로 낮춰 속도 극대화
+    const collectArticle = async (key, articleNum, currentDepth = 0, maxDepth = 3, opt = {}) => { // 💡 깊이 제한을 1로 낮춰 속도 극대화
       if (!articleNum) return;
 
       const vk = `${key}_${articleNum}`;
@@ -1048,6 +1048,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 3. **사실관계 및 인과관계 검증**
    - 인과관계, 선후관계, 상관관계, 사실관계, 계산식, 법률용어, 한정범위 여부가 논리적으로 완벽해야 합니다.
    - 같은 질문에 대해 반대 방향의 답변을 서로 열거하지 마십시오.
+   - 여러 시행령이 적용되는경우를 논리적으로 단계별로 생각해야 합니다. 절대로 임의로 억지스레 추론하지 마시오. (나쁜 예: 경광등을 켜고 사이렌을 작동하지 않은 채 도로 중앙을 통행하는것은 허용한다. 시행령 하나를 빼먹음 ㅅㅂ)
    - 사례 내 사실관계 간 모순이 없어야 합니다. (예: 본인이 계약 연장을 요구한 경우, 연장이 '의사에 반한다'고 표현 금지)
    - 유사 개념 혼동 금지 ("갈음" vs "면제", "취소" vs "중지" vs "정지" 등).
    
