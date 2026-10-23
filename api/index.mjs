@@ -1274,7 +1274,7 @@ const QuizService = {
     }
     
     // 헌법 여부 판별
-    const isConstitution = article.lawName.includes("헌법") || article.lawId === "001444";
+    const isConstitution = article.lawName.includes("대한민국헌법") || article.lawId == "001444" || article.lawId == "61603";
     
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
