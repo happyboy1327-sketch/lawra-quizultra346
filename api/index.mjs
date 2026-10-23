@@ -1251,11 +1251,7 @@ const QuizService = {
     if (typeof content !== "string") return null;
         
       return JSON.parse(content);
-    } catch (error) {
-      // 파싱 실패 시(IDK 기권 포함) 터트리지 않고 null 반환 후 안전하게 탈출
-      return null; 
-    }
-},
+    },
 
     async generateQuiz(article, retriesLeft = 2) {
     if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30)
