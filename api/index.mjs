@@ -1552,9 +1552,10 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
     query: req.query
   });
 });
+
 app.get("/api/fine-tuning/new", async (req, res) => {
   try {
-    const { trainingFiles, hyperparameters } = req.body;
+    const { trainingFiles, hyperparameters } = req.query;
     
     if (!trainingFiles) {
       return res.status(400).json({ 
@@ -1565,8 +1566,8 @@ app.get("/api/fine-tuning/new", async (req, res) => {
 
     const response = await client.fineTuning.jobs.create({
       model: MODEL,
-      trainingFiles: trainingFiles,
-      hyperparameters: hyperparameters || { trainingSteps: 100 },
+      trainingFiles: typeof trainingFiles === 'string' ? JSON.parse(trainingFiles) : trainingFiles,
+      hyperparameters: hyperparameters ? (typeof hyperparameters === 'string' ? JSON.parse(hyperparameters) : hyperparameters) : { trainingSteps: 100 },
     });
 
     return res.json({ 
