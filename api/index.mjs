@@ -101,19 +101,31 @@ const Calc = {
   // 수정된 run 함수 내부 정규식
 run(expr) {
   const s = String(expr).trim();
-  // 뒤에 오는 알파벳(y, m 등)에 상관없이 위치(쉼표 기준)로 숫자를 추출합니다.
+  
+  // 1. DATE 처리
   let m = s.match(/^DATE\((\d{4}-\d{2}-\d{2}),\s*([+-]?\d+)[a-zA-Z]?,\s*([+-]?\d+)[a-zA-Z]?,\s*([+-]?\d+)([dB])\)$/);
   if (m) return Calc.date(m[1], +m[2], +m[3], +m[4], m[5]);
     
-    m = s.match(/^NUM\(([\d+\-*/().\s]+)\)$/);
-    if (m) {
-      try {
-        const v = Function(`"use strict"; return (${m[1]});`)();
-        return Number.isFinite(v) ? String(Math.round(v * 100) / 100).replace(/\B(?=(\d{3})+(?!\d))/g, ",") : null;
-      } catch { return null; }
+  // 2. NUM 처리 (Math.ceil, Math.floor, Math.round 등 자바스크립트 수학 함수 허용하도록 정규식 수정)
+  m = s.match(/^NUM\(([\d+\-*/().\s|Math.ceil|Math.floor|Math.round]+)\)$/);
+  if (m) {
+    try {
+      // 안전한 계산 수행
+      const v = Function(`"use strict"; return (${m[1]});`)();
+      
+      if (!Number.isFinite(v)) return null;
+
+      // 정수부와 소수부를 분리하여 천 단위 콤마가 소수점 뒤에 적용되지 않도록 방지
+      const parts = String(v).split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      
+      return parts.join(".");
+    } catch { 
+      return null; 
     }
-    return null;
-  },
+  }
+  return null;
+},
 };
 function parseCalcItem(item) {
   let s = item;
