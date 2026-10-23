@@ -1247,7 +1247,7 @@ const QuizService = {
       reasoning_effort: reasoningEffort,
     });
     
-    let content = response?.choices?.[0]?.message?.content;
+    const content = response?.choices?.[0]?.message?.content;
     if (typeof content !== "string") return null;
         
       return JSON.parse(content);
