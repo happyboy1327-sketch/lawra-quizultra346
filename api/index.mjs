@@ -1244,22 +1244,13 @@ const QuizService = {
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1, 
       top_p: 0.0,
-      stop: ["[IDK]", "</s>"],
       reasoning_effort: reasoningEffort,
     });
     
     let content = response?.choices?.[0]?.message?.content;
     if (typeof content !== "string") return null;
-
-    // 만약 [IDK] 기권 신호가 오거나 불완전한 JSON으로 끊겼을 때의 에러 방지
-    try {
-      const sanitized = content
-        .replace(/^\s*```json\s*/i, "")
-        .replace(/^\s*```\s*/i, "")
-        .replace(/\s*```\s*$/i, "")
-        .trim();
         
-      return JSON.parse(sanitized);
+      return JSON.parse(content);
     } catch (error) {
       // 파싱 실패 시(IDK 기권 포함) 터트리지 않고 null 반환 후 안전하게 탈출
       return null; 
@@ -1333,6 +1324,14 @@ const QuizService = {
           return this.generateQuiz(article, retriesLeft - 1);
         }
         return null; 
+      }
+      
+      if (!rawQuiz || Object.keys(rawQuiz).length === 0 || rawQuiz === "{}") {
+        // 💡 헌법이 아닐 때만 텅 빈 객체 컷
+        if (!isConstitution) {
+          console.warn(`    └ [1단계 즉시 컷] 미스트랄이 첫 토큰부터 스톱 시퀀스([IDK])를 발동하여 응답을 거부했습니다. (${article.lawName} ${article.num})`);
+          return null;
+        }
       }
       
       const isEmptyQuiz = !rawQuiz || Object.keys(rawQuiz).length === 0;
