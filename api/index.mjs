@@ -1555,7 +1555,7 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
 
 app.get("/api/fine-tuning/new", async (req, res) => {
   try {
-    const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
+    const client = new Mistral({ apiKey: process.env.LAW_QUIZ_MISTRAL_KEY });
 
     // 1. Studio의 모든 파일 가져오기
     const allFiles = [];
