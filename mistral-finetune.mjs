@@ -230,10 +230,8 @@ async function prepareDataset(
     );
   }
 
-  // 명시적으로 승인된 예시만 학습 대상으로 선택
-  const approved = parsed.filter(
-    (example) => example?.trainingApproved === true
-  );
+  // 명시적으로 승인되고 기본 검증을 통과한 예시만 학습 대상으로 선택
+  const approved = parsed.filter(isApprovedForTraining);
 
   if (approved.length < 2) {
     throw new Error(
@@ -570,20 +568,3 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 
-function isApprovedForTraining(example) {
-  // 명시적으로 제외한 데이터는 학습하지 않음
-  if (example.trainingApproved === false) return false;
-
-  // 검수 완료 표시가 없는 데이터도 학습하지 않음
-  if (example.trainingApproved !== true) return false;
-
-  const q = example.quiz;
-  if (!q || q.explanation?.Boolean !== true) return false;
-  if (!Array.isArray(q.options) || q.options.length !== 4) return false;
-
-  const correct = q.options.filter(o => o?.is_correct === true);
-  if (correct.length !== 1) return false;
-  if (correct[0].text?.trim() !== q.answer?.trim()) return false;
-
-  return true;
-}
