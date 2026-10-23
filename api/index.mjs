@@ -1430,6 +1430,7 @@ if (!step1a.valid) {
       
       const reStep2 = await this.validateBlindSolver(correctedQuiz, article, refContent);
       if (!reStep2.valid) return { valid: false, step: 2, reason: `재검증 블라인드 솔버 실패: ${reStep2.reason}`, quiz: correctedQuiz };
+      console.log("[재검증2]", JSON.stringify(reStep2, null, 2));
       
       console.log("  └ [재검증 통과] 수정된 퀴즈 정답 논리 일치 확인");
       return { valid: true, reason: "자동 수정 후 검증 통과", quiz: correctedQuiz };
