@@ -1571,7 +1571,7 @@ app.get("/api/fine-tuning/new", async (req, res) => {
     }
 
     // 2. 전부 학습 파일로 지정해서 잡 생성
-    const job = await client.fineTuning.jobs.create({
+    const job = await client.fineTuning.createJob({
       model: "ministral-8b-latest",
       trainingFiles: allFiles.map(f => ({ fileId: f.id })),
       hyperparameters: {
