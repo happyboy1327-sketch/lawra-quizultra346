@@ -1304,9 +1304,12 @@ const QuizService = {
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0, // 💡 무조건 원본 스펙인 0.0으로 고정
         top_p: 0.0,       // 💡 무조건 원본 스펙인 0.0으로 고정
-        stop: isConstitution ? ["</s>"] : ["[IDK]", "</s>"],
         reasoning_effort: "xhigh",
       });
+
+      if (!isConstitution) {
+        requestOptions.stop = ["[IDK]", "</s>"];
+      }
       
       let contentRes = response?.choices?.[0]?.message?.content;
       if (typeof contentRes !== "string") return null;
