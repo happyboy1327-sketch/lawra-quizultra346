@@ -1572,7 +1572,7 @@ app.get("/api/fine-tuning/new", async (req, res) => {
       },
       body: JSON.stringify({
         model: MODEL, // [모델 등급 플래그: 모델 등급 및 지원 여부 확인 필요]
-        training_files: [{ file_id: training_file }],
+        training_files: [{ file_id: "3ba61378-2a61-44d3-862c-f4180998b1e6" }],
         hyperparameters: hyperparameters ? (typeof hyperparameters === 'string' ? JSON.parse(hyperparameters) : hyperparameters) : undefined
       })
     });
