@@ -1298,16 +1298,16 @@ const QuizService = {
 
     try {
       await this.throttle();
-      const response = await client.chat.complete({
+      const requestOptions = {
         model: MODEL,
         responseFormat: { type: "json_object" },
         messages: [{ role: "user", content: finalPrompt }],
-        temperature: 0.0, // 💡 무조건 원본 스펙인 0.0으로 고정
-        top_p: 0.0,       // 💡 무조건 원본 스펙인 0.0으로 고정
+        temperature: 0.0,
+        top_p: 0.0,
         reasoning_effort: "xhigh",
-      });
+      };  
 
-      // 💡 [핵심 수정] 헌법이 '아닐 때만' stop 토큰 배열을 주입하고, 헌법이면 stop 옵션 자체를 아예 넣지 않음
+      // 💡 [핵심 ㅅㅂ 수정] 헌법이 '아닐 때만' stop 토큰 배열을 주입하고, 헌법이면 stop 옵션 자체를 아예 넣지 않음
       if (!isConstitution) {
         requestOptions.stop = ["[IDK]", "</s>"];
       }
