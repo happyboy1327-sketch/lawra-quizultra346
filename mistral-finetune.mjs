@@ -112,9 +112,11 @@ function validateQuiz(example, index) {
     throw new Error(`${prefix}: 객체여야 합니다.`);
   }
 
-  // 법령 원문 필수 항목
+  // Firestore 퀴즈에는 법령 원문 메타데이터가 없을 수 있다.
+  // 제공된 경우에만 빈 값을 거부한다.
   for (const key of ["lawName", "articleNum", "lawText"]) {
-    if (typeof example[key] !== "string" || !example[key].trim()) {
+    if (example[key] !== undefined &&
+        (typeof example[key] !== "string" || !example[key].trim())) {
       throw new Error(`${prefix}.${key}가 비어 있습니다.`);
     }
   }
@@ -177,7 +179,8 @@ function buildPrompt(example) {
     return example.prompt;
   }
 
-  return `너는 대한민국 법률 객관식 퀴즈 생성기다.
+  if (example.lawName && example.articleNum && example.lawText) {
+    return `너는 대한민국 법률 객관식 퀴즈 생성기다.
 제공된 법령 본문에 근거하여 4지선다 문제를 작성하라.
 제공되지 않은 판례나 법리를 추측해서 만들지 마라.
 근거가 부족하면 {"error":"[IDK]"}만 출력하라.
@@ -195,16 +198,22 @@ ${example.articleNum}
 [출제 조문 내용]
 ${example.lawText}
 
-${
-  example.referencedText
-    ? `[참조 조문 내용]\n${example.referencedText}\n`
-    : ""
-}
+${example.referencedText ? `[참조 조문 내용]\\n${example.referencedText}\\n` : ""}
 
 출력 키:
 id, category, concept_summary, calcul_check,
 judicial_precedent, question, explanation,
 explanation_answer, options, answer, timer_sec`;
+  }
+
+  // 원문 조문이 저장되지 않은 Firestore 퀴즈는 출력 형식과 문체 학습에 사용한다.
+  return `너는 대한민국 법률 객관식 퀴즈 생성기다.
+다음 규격의 검증된 한국어 법률 퀴즈 한 개를 순수 JSON으로 출력하라.
+질문과 해설은 법률 문어체로 작성하고, 보기 4개 중 정답은 정확히 1개여야 한다.
+answer는 is_correct=true인 보기의 text와 완전히 일치해야 한다.
+제공되지 않은 법령 원문이나 법리를 추측해 사실처럼 추가하지 마라.
+출력 키: id, category, concept_summary, calcul_check, judicial_precedent,
+question, explanation, explanation_answer, options, answer, timer_sec`;
 }
 
 function buildTargetQuiz(quiz) {
@@ -235,8 +244,10 @@ async function prepareDataset(
     );
   }
 
-  // 명시적으로 승인되고 기본 검증을 통과한 예시만 학습 대상으로 선택
-  const approved = parsed.filter(isApprovedForTraining);
+  // Firestore 내보내기는 저장 전 3단계 검증을 통과한 퀴즈만 포함한다.
+  // 로컬 JSON은 trainingApproved: true 항목만 사용한다.
+  const approved = parsed.filter(isApprovedForTraining).map((example) =>
+    example?.quiz ? example : { ...example, quiz: example });
 
   if (approved.length < 2) {
     throw new Error(
