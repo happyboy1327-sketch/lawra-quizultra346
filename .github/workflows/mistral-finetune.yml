@@ -6,7 +6,7 @@ on:
       dataset_path:
         description: "저장소 안 승인 문제 JSON 파일 경로 (예: examples.json)"
         required: true
-        default: "examples.json"
+        default: "firestore-examples.json"
         type: string
 
 permissions:
@@ -38,13 +38,18 @@ jobs:
             exit 1
           fi
 
+      - name: Firestore에 누적된 검증 퀴즈 내보내기
+        if: inputs.dataset_path == 'firestore-examples.json'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: node export-firestore-quizzes.mjs firestore-examples.json
+
       - name: 학습 데이터 검증 및 생성
         env:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         run: |
           test -f "${{ inputs.dataset_path }}" || {
             echo "::error::데이터 파일을 찾을 수 없습니다: ${{ inputs.dataset_path }}"
-            echo "저장소에 JSON 데이터 파일을 먼저 올려주세요."
             exit 1
           }
           node mistral-finetune.mjs prepare "${{ inputs.dataset_path }}" training.jsonl validation.jsonl
