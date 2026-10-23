@@ -1555,30 +1555,46 @@ app.get("/api/debug/lawname/:mst", (req, res) => {
 
 app.get("/api/fine-tuning/new", async (req, res) => {
   try {
-    const { trainingFiles, hyperparameters } = req.query;
+    const { training_file, hyperparameters } = req.query;
     
-    if (!trainingFiles) {
+    if (!training_file) {
       return res.status(400).json({ 
         error: "학습 파일 정보 누락", 
         serverError: true 
       });
     }
 
-    const response = await client.fineTuning.jobs.create({
-      model: MODEL,
-      trainingFiles: typeof trainingFiles === 'string' ? JSON.parse(trainingFiles) : trainingFiles,
-      hyperparameters: hyperparameters ? (typeof hyperparameters === 'string' ? JSON.parse(hyperparameters) : hyperparameters) : { trainingSteps: 100 },
+    const response = await fetch("https://api.mistral.ai/v1/fine_tuning/jobs", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL, // [모델 등급 플래그: 모델 등급 및 지원 여부 확인 필요]
+        training_files: [{ file_id: training_file }],
+        hyperparameters: hyperparameters ? (typeof hyperparameters === 'string' ? JSON.parse(hyperparameters) : hyperparameters) : undefined
+      })
     });
 
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({ 
+        error: data, 
+        serverError: true // [서버 오류 플래그]
+      });
+    }
+
     return res.json({ 
-      response, 
-      serverError: true 
+      response: data, 
+      serverError: true // [서버 오류 플래그: 명시하지 않은 모델 정보가 임의 포함됨]
     });
   } catch (err) {
     console.error("파인튜닝 생성 오류:", err.message);
     return res.status(500).json({ 
       error: err.message, 
-      serverError: true 
+      serverError: true // [서버 오류 플래그]
     });
   }
 });
