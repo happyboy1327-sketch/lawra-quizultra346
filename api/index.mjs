@@ -532,9 +532,10 @@ function delegatedRefs(infos, selfName) {
   const out = [];
   for (const w of toArr(infos)) {
     const kinds = toArr(w["위임구분"]);
-    // 조항호목이 바뀌면 법령명 상속을 끊는다. 같은 조항호목에서만 직전 법령명을 상속한다.
-     let previousClause = null;
-     let previousLawName = selfName;
+    // 조항호목이 같고 제목 단어가 겹칠 때만 직전 법령명을 상속한다.
+    let previousClause = null;
+    let previousArticleTitle = "";
+    let previousLawName = selfName;
     for (const e of toArr(w["위임법령조문정보"])) {
       const nums = String(e["위임법령조문번호"] ?? "0").split(",").map((n) => n.trim());
       
@@ -542,20 +543,28 @@ function delegatedRefs(infos, selfName) {
       const named = text.match(/「([^」]+)」/)?.[1];
 
       const clauseKey = String(e["조항호목"] ?? "").trim();
-      let targetLawName;
+      const articleTitle = String(e["위임법령조문제목"] ?? "").trim();
+
+      const previousTitleWords = previousArticleTitle.split(/\s+/).filter(Boolean);
+
+      const currentTitleWords = articleTitle.split(/\s+/).filter(Boolean);
+
+      const hasSharedTitleWord = previousTitleWords.some(word => currentTitleWords.includes(word));
+
+       let targetLawName;
       
       if (named) {
         targetLawName = named;
-      } else if (clauseKey && clauseKey === previousClause) {
-        // 같은 조항호목 안에서 법령명이 생략되면 직전 법령명을 상속한다.
+      } else if (clauseKey && clauseKey === previousClause && hasSharedTitleWord) {
+       // 조항호목이 같고 위임법령조문제목에 겹치는 단어가 있으면 직전 법령명을 상속한다.
        targetLawName = previousLawName;
       } else {
-  // 조항호목이 달라진 경계의 첫 생략 항목은 본 법령으로 처리한다.
+  /// 조항호목이 다르거나 제목에 겹치는 단어가 없으면 본 법령명으로 초기화한다.
        targetLawName = selfName;
       }
 
       previousClause = clauseKey;
-
+      previousArticleTitle = articleTitle;
       previousLawName = targetLawName;
        if (nums.every((n) => n === "0")) continue; 
        
