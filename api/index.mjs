@@ -252,7 +252,7 @@ const Utils = {
 
   normalizeQuiz: function (quiz) {
     if (!quiz || typeof quiz !== "object") return null;
-    quiz = applyCalc(quiz)
+    quiz = applyCalc(quiz);
 
     const explanation = (() => {
       const rawExpl = quiz.explanation;
@@ -271,95 +271,83 @@ const Utils = {
       is_correct: opt?.is_correct === true,
     }));
 
-    // answer와 공백 제외 완전 일치하는 보기가 있을 때만 is_correct 플래그 보정
     const cleanStr = (s) => String(s || "").replace(/\s+/g, "").trim();
-const targetAnswer = cleanStr(quiz.answer);
-
-// 편집 거리 행렬을 이용한 유사도 계산 함수 (90% 이상 일치)
-const getSimilarity = (s1, s2) => {
-    const longer = s1.length > s2.length ? s1 : s2;
-    if (longer.length === 0) return 1.0;
-    const costs = [];
-    for (let i = 0; i <= s1.length; i++) {
+    
+    // 에디트 디스턴스 최소화 및 정밀 유사도 연산 함수
+    const getSimilarity = (s1, s2) => {
+      const longer = s1.length > s2.length ? s1 : s2;
+      if (longer.length === 0) return 1.0;
+      const costs = [];
+      for (let i = 0; i <= s1.length; i++) {
         let lastValue = i;
         for (let j = 0; j <= s2.length; j++) {
-            if (i === 0) {
-                costs[j] = j;
-            } else if (j > 0) {
-                let newValue = costs[j - 1];
-                if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-                    newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-                }
-                costs[j - 1] = lastValue;
-                lastValue = newValue;
+          if (i === 0) {
+            costs[j] = j;
+          } else if (j > 0) {
+            let newValue = costs[j - 1];
+            if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+              newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
             }
+            costs[j - 1] = lastValue;
+            lastValue = newValue;
+          }
         }
         if (i > 0) costs[s2.length] = lastValue;
+      }
+      return (longer.length - costs[s2.length]) / longer.length;
+    };
+
+    // 정답 추출 타겟 결정 우선순위
+    const expText = this.normalizeText(quiz.explanation_answer || "");
+    const ansText = this.normalizeText(quiz.answer || "");
+    
+    let targetIndex = -1;
+
+    // 1단계: 완전 일치 매칭 (explanation_answer -> answer 순)
+    if (expText) targetIndex = rawOptions.findIndex(o => cleanStr(o.text) === cleanStr(expText));
+    if (targetIndex === -1 && ansText) targetIndex = rawOptions.findIndex(o => cleanStr(o.text) === cleanStr(ansText));
+
+    // 2단계: 문자열 유사도가 최고점인 최적 보기 탐색 (70% 유사도 완화 가드)
+    if (targetIndex === -1) {
+      let maxSim = -1;
+      const queryStr = cleanStr(expText || ansText);
+      if (queryStr) {
+        rawOptions.forEach((o, idx) => {
+          const sim = getSimilarity(cleanStr(o.text), queryStr);
+          if (sim > maxSim && sim >= 0.7) {
+            maxSim = sim;
+            targetIndex = idx;
+          }
+        });
+      }
     }
-    return (longer.length - costs[s2.length]) / longer.length;
-};
 
-// 보기 찾기: 완전 일치 우선, 없으면 유사도 90% 이상이 "유일할 때만"
-const findOption = (target) => {
-  if (!target) return -1;
-  const norm = rawOptions.map(o => cleanStr(o.text));
-  const exact = norm.indexOf(target);
-  if (exact !== -1) return exact;
-  const sims = norm.map(t => getSimilarity(t, target));
-  return sims.filter(s => s >= 0.9).length === 1 ? sims.findIndex(s => s >= 0.9) : -1;
-};
-// 해설이 결론 낸 보기(explanation_answer)를 최우선 기준으로 answer·is_correct를 맞춤
-const expText = this.normalizeText(quiz.explanation_answer);
-const expIdx = findOption(cleanStr(expText));
-const ansIdx = findOption(targetAnswer);
+    // 3단계: 여전히 매칭 실패 시 수동 지정된 is_correct 플래그 백업 사용
+    if (targetIndex === -1) {
+      targetIndex = rawOptions.findIndex(o => o.is_correct === true);
+    }
 
-// 기존 정답 선택 로직 유지
-const target =
-  expIdx !== -1
-    ? expIdx
-    : ansIdx !== -1
-      ? ansIdx
-      : rawOptions.findIndex(o => o.is_correct);
+    // 인덱스가 정상적으로 확보된 경우, 텍스트 일치 처리 및 플래그 덮어쓰기 보정
+    let finalAnswerText = ansText || expText;
+    if (targetIndex !== -1) {
+      const matchedOptionText = rawOptions[targetIndex].text;
+      
+      // 날짜 데이터가 다르게 파싱되었을 경우 오차 보정 처리
+      const optDate = this.extractDate(matchedOptionText);
+      const expDate = this.extractDate(expText || ansText);
+      if (optDate && expDate && optDate !== expDate) {
+        rawOptions[targetIndex].text = matchedOptionText.replace(optDate, expDate);
+      } else if (expText && cleanStr(matchedOptionText) !== cleanStr(expText)) {
+        rawOptions[targetIndex].text = expText;
+      }
+      
+      finalAnswerText = rawOptions[targetIndex].text;
+    }
 
-let matchedIndex = expIdx !== -1 ? expIdx : ansIdx;
-
-// 기존 정답 표시 로직을 유지하면서 정답 텍스트 수정
-if (expText && target !== -1) {
-  const optionText = rawOptions[target].text;
-  const optionDate = this.extractDate(optionText);
-  const explanationDate = this.extractDate(expText);
-
-
-  if (
-    optionDate &&
-    explanationDate &&
-    optionDate !== explanationDate
-  ) {
-    // 날짜가 다르면 기존 보기에서 날짜만 교체
-    rawOptions[target].text = optionText.replace(
-      optionDate,
-      explanationDate
-    );
-    matchedIndex = target;
-  } else if (
-    cleanStr(optionText) !== cleanStr(expText) &&
-    (
-      expIdx !== -1 ||
-      getSimilarity(cleanStr(optionText), cleanStr(expText)) >= 0.5
-    )
-  ) {
-    // 기존 텍스트 수정 로직 유지
-    rawOptions[target].text = expText;
-    matchedIndex = target;
-  }
-}
-
-const options = matchedIndex !== -1
-  ? rawOptions.map((opt, idx) => ({
+    const options = rawOptions.map((opt, idx) => ({
       ...opt,
-      is_correct: idx === matchedIndex
-    }))
-  : rawOptions;
+      is_correct: idx === targetIndex
+    }));
 
 
     const normalized = {
