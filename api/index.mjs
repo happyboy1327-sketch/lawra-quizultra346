@@ -530,127 +530,65 @@ function getDelegatedMap(lawId) {
 
 function delegatedRefs(infos, selfName) {
   const out = [];
-  const seen = new Set();
-  const validKinds = new Set(["인용법령", "시행령", "시행규칙", "위임법령"]);
+  for (const w of toArr(infos)) {
+    const kinds = toArr(w["위임구분"]);
+    
+    // 상태 변수는 각 위임 블록(w) 내부에서만 유효하게 관리해야 함
+    let previousClause = null;
+    let previousArticleTitle = "";
+    let previousLawName = selfName;
 
-  const asArray = (value) => {
-    if (value == null) return [];
-    return Array.isArray(value) ? value.flat(Infinity) : [value];
-  };
+    for (const e of toArr(w["위임법령조문정보"])) {
+      const nums = String(e["위임법령조문번호"] ?? "0").split(",").map((n) => n.trim());
+      const text = e["라인텍스트"] || "";
+      
+      const named = text.match(/「([^」]+)」/)?.[1];
+      const clauseKey = String(e["조항호목"] ?? "").trim();
+      const articleTitle = String(e["위임법령조문제목"] ?? "").trim();
 
-  const clean = (value) => value == null ? "" : String(value).trim();
+      const previousTitleWords = previousArticleTitle.split(/\s+/).filter(Boolean);
+      const currentTitleWords = articleTitle.split(/\s+/).filter(Boolean);
+      const hasSharedTitleWord = previousTitleWords.some(word => currentTitleWords.includes(word));
 
-  function getExplicitLawName(entry) {
-    // 법령명이 실제로 표기된 필드만 확인한다. '대통령령' 같은 링크 문구는 법령명이 아니다.
-    const text = `${clean(entry["라인텍스트"])} ${clean(entry["링크텍스트"])}`;
-    return text.match(/「\s*([^」]+?)\s*」/)?.[1]?.trim() || "";
-  }
-
-  function resolveLawName(block, entry, kind) {
-    const explicitName = getExplicitLawName(entry);
-    if (explicitName) return explicitName;
-
-    const titles = asArray(block["위임법령제목"])
-      .map(clean)
-      .filter(Boolean);
-
-    // 제목이 하나일 때만 블록 제목을 확정값으로 사용한다.
-    if (titles.length === 1) {
-      const title = titles[0];
-      if (title === "시행령" || title === "시행규칙") {
-        return `${clean(selfName)} ${title}`.trim();
+      let targetLawName;
+      if (named) {
+        targetLawName = named;
+        previousLawName = named; // 명시된 법령명이 있으면 갱신
+      } else if (clauseKey && clauseKey === previousClause && hasSharedTitleWord) {
+        targetLawName = previousLawName; // 동일 블록 내 조건 부합 시 상속 유지
+      } else {
+        targetLawName = selfName; // 무조건 본법령으로 튕기지 않고 블록 내 직전 법령명 유지
       }
-      return title;
-    }
 
-    // 제목이 여러 개면 현재 조문 텍스트에 특정 제목이 나타나는 경우에만 연결한다.
-    if (titles.length > 1) {
-      const text = `${clean(entry["라인텍스트"])} ${clean(entry["링크텍스트"])}`;
-      const matched = titles.filter(title => text.includes(title));
-      if (matched.length === 1) return matched[0];
+      previousClause = clauseKey;
+      previousArticleTitle = articleTitle;
+      previousLawName = targetLawName;
 
-      // 여러 후보 중 첫 번째를 임의로 고르면 다른 법령의 조문으로 연결될 수 있으므로 제외한다.
-      return "";
-    }
+      if (targetLawName === "시행령" || targetLawName === "시행규칙") {
+        targetLawName = `${selfName} ${targetLawName}`;
+      } else if (kinds.includes("시행령") && !targetLawName.endsWith("시행령")) {
+        targetLawName = `${targetLawName} 시행령`;
+      } else if (kinds.includes("시행규칙") && !targetLawName.endsWith("시행규칙")) {
+        targetLawName = `${targetLawName} 시행규칙`;
+      }
 
-    // 블록 제목이 없는 경우에만 종류를 이용해 제한적으로 보정한다.
-    if (kind === "시행령" || kind === "시행규칙") {
-      return `${clean(selfName)} ${kind}`.trim();
-    }
+      const kind = kinds[0] || "인용법령";
+      if (!["인용법령", "시행령", "시행규칙", "위임법령"].includes(kind)) continue;
 
-    // 법령명을 특정할 근거가 없으면 다른 법령으로 오인하지 않도록 제외한다.
-    return "";
-  }
-
-  function processBlock(block) {
-    const kinds = asArray(block["위임구분"])
-      .flatMap(value => clean(value).split(","))
-      .map(value => value.trim())
-      .filter(kind => validKinds.has(kind));
-
-    if (!kinds.length) return;
-
-    const entries = asArray(block["위임법령조문정보"]);
-
-    for (const entry of entries) {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-
-      const nums = clean(entry["위임법령조문번호"] ?? "0")
-        .split(",")
-        .map(value => value.trim());
-
-      if (!nums.some(number => number && number !== "0")) continue;
-
-      const branches = clean(entry["위임법령조문가지번호"])
-        .split(",")
-        .map(value => value.trim());
-      const lineText = clean(entry["라인텍스트"]);
-
-      for (const kind of kinds) {
-        const lawName = resolveLawName(block, entry, kind);
-        if (!lawName) continue;
-
-        nums.forEach((number, index) => {
-          if (!number || number === "0") return;
-
-          const result = {
+      const gajis = String(e["위임법령조문가지번호"] ?? "").split(",").map((n) => n.trim());
+      nums.forEach((n, i) => {
+        if (n && n !== "0") {
+          out.push({
             kind,
-            lawName,
-            num: artKey(number, branches[index] || "0"),
-            from: entry["조항호목"],
-            lineText,
-          };
-
-          const key = JSON.stringify(result);
-          if (seen.has(key)) return;
-          seen.add(key);
-          out.push(result);
-        });
-      }
+            lawName: targetLawName,
+            num: artKey(n, gajis[i] || "0"),
+            from: e["조항호목"],
+            lineText: text,
+          });
+        }
+      });
     }
   }
-
-  // 중첩 단계 수를 가정하지 않는다. '위임정보'가 2겹·3겹 이상이어도 탐색한다.
-  function walk(node) {
-    if (node == null || typeof node !== "object") return;
-
-    if (Array.isArray(node)) {
-      for (const child of node) walk(child);
-      return;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(node, "위임법령조문정보")) {
-      processBlock(node);
-    }
-
-    // 조문 항목 배열은 이미 processBlock에서 처리했으므로 다시 순회하지 않는다.
-    for (const [key, value] of Object.entries(node)) {
-      if (key === "위임법령조문정보") continue;
-      walk(value);
-    }
-  }
-
-  walk(infos);
   return out;
 }
 
