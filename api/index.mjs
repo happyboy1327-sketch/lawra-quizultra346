@@ -532,50 +532,45 @@ function delegatedRefs(infos, selfName) {
   const out = [];
   for (const w of toArr(infos)) {
     const kinds = toArr(w["위임구분"]);
-    // 조항호목이 같고 제목 단어가 겹칠 때만 직전 법령명을 상속한다.
+    
+    // 상태 변수는 각 위임 블록(w) 내부에서만 유효하게 관리해야 함
     let previousClause = null;
     let previousArticleTitle = "";
     let previousLawName = selfName;
+
     for (const e of toArr(w["위임법령조문정보"])) {
       const nums = String(e["위임법령조문번호"] ?? "0").split(",").map((n) => n.trim());
-      
       const text = e["라인텍스트"] || "";
+      
       const named = text.match(/「([^」]+)」/)?.[1];
-
       const clauseKey = String(e["조항호목"] ?? "").trim();
       const articleTitle = String(e["위임법령조문제목"] ?? "").trim();
 
       const previousTitleWords = previousArticleTitle.split(/\s+/).filter(Boolean);
-
       const currentTitleWords = articleTitle.split(/\s+/).filter(Boolean);
-
       const hasSharedTitleWord = previousTitleWords.some(word => currentTitleWords.includes(word));
 
-       let targetLawName;
-      
+      let targetLawName;
       if (named) {
         targetLawName = named;
+        previousLawName = named; // 명시된 법령명이 있으면 갱신
       } else if (clauseKey && clauseKey === previousClause && hasSharedTitleWord) {
-       // 조항호목이 같고 위임법령조문제목에 겹치는 단어가 있으면 직전 법령명을 상속한다.
-       targetLawName = previousLawName;
+        targetLawName = previousLawName; // 동일 블록 내 조건 부합 시 상속 유지
       } else {
-  /// 조항호목이 다르거나 제목에 겹치는 단어가 없으면 본 법령명으로 초기화한다.
-       targetLawName = selfName;
+        targetLawName = previousLawName; // 무조건 본법령으로 튕기지 않고 블록 내 직전 법령명 유지
       }
 
       previousClause = clauseKey;
       previousArticleTitle = articleTitle;
       previousLawName = targetLawName;
-       if (nums.every((n) => n === "0")) continue; 
-       
 
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
-  targetLawName = `${selfName} ${targetLawName}`;
-} else if (kinds.includes("시행령") && !targetLawName.endsWith("시행령")) {
-  targetLawName = `${targetLawName} 시행령`;
-} else if (kinds.includes("시행규칙") && !targetLawName.endsWith("시행규칙")) {
-  targetLawName = `${targetLawName} 시행규칙`;
-}
+        targetLawName = `${selfName} ${targetLawName}`;
+      } else if (kinds.includes("시행령") && !targetLawName.endsWith("시행령")) {
+        targetLawName = `${targetLawName} 시행령`;
+      } else if (kinds.includes("시행규칙") && !targetLawName.endsWith("시행규칙")) {
+        targetLawName = `${targetLawName} 시행규칙`;
+      }
 
       const kind = kinds[0] || "인용법령";
       if (!["인용법령", "시행령", "시행규칙", "위임법령"].includes(kind)) continue;
@@ -591,7 +586,7 @@ function delegatedRefs(infos, selfName) {
             lineText: text,
           });
         }
-        });
+      });
     }
   }
   return out;
