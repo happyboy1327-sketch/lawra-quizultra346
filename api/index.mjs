@@ -542,8 +542,12 @@ function delegatedRefs(infos, selfName) {
       let targetLawName = selfName;
       if (named) {
         targetLawName = named;
-      } else if (titles.length > 0 && titles[0]) {
+      } else if (titles.length === 1 && titles[0]) {
+        // 대상 법령이 하나로 특정될 때만 제목을 사용한다.
         targetLawName = titles[0];
+        } else if (titles.includes(selfName)) {
+        // 제목이 여러 개면 첫 번째 제목을 임의 선택하지 않고 현재 법령을 우선한다.
+        targetLawName = selfName;
       }
 
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
