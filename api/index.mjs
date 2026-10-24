@@ -254,16 +254,25 @@ const Utils = {
     if (!quiz || typeof quiz !== "object") return null;
     quiz = applyCalc(quiz);
 
+    // [추가] 문법 및 시간 관련 표현 정돈 함수
+    const fixGrammarAndTimeline = (text) => {
+      if (typeof text !== "string") return text;
+      return text
+        .replace(/(\d+년\s*\d+월\s*\d+일)\s*부터\s*(지나기\s*전|이내에)/g, "$1부터 $2") // 날짜 표현 매끄럽게 정돈
+        .replace(/\s{2,}/g, " ") // 불필요한 공백 제거
+        .trim();
+    };
+
     const explanation = (() => {
       const rawExpl = quiz.explanation;
       if (rawExpl && typeof rawExpl === "object" && !Array.isArray(rawExpl)) {
         const boolVal = rawExpl.Boolean ?? rawExpl.boolean ?? false;
         return {
-          string: this.normalizeText(rawExpl.string ?? rawExpl.text ?? ""),
+          string: fixGrammarAndTimeline(this.normalizeText(rawExpl.string ?? rawExpl.text ?? "")),
           Boolean: typeof boolVal === "boolean" ? boolVal : String(boolVal).toLowerCase() === "true"
         };
       }
-      return { string: this.normalizeText(rawExpl), Boolean: true };
+      return { string: fixGrammarAndTimeline(this.normalizeText(rawExpl)), Boolean: true };
     })();
 
     const rawOptions = (Array.isArray(quiz.options) ? quiz.options : []).map(opt => ({
@@ -355,10 +364,10 @@ const Utils = {
       id: this.normalizeText(quiz.id),
       category: this.normalizeText(quiz.category),
       explanation,
-      question: this.normalizeText(quiz.question),
-      answer: matchedIndex !== -1 ? rawOptions[matchedIndex].text : this.normalizeText(quiz.answer),
+      question: fixGrammarAndTimeline(this.normalizeText(quiz.question)),
+      answer: matchedIndex !== -1 ? rawOptions[matchedIndex].text : fixGrammarAndTimeline(this.normalizeText(quiz.answer)),
       timer_sec: Number(quiz.timer_sec) || 15,
-      options, // 셔플 제거하여 LLM이 생성한 순서와 해설 번호가 100% 일치하도록 함
+      options: options.map(opt => ({ ...opt, text: fixGrammarAndTimeline(opt.text) })),
     };
 
     normalized.explanation.string = normalized.explanation.string
