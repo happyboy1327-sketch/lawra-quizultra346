@@ -506,7 +506,9 @@ function getDelegatedMap(lawId) {
           const map = new Map();
           for (const it of toArr(data?.lsDelegated?.["법령"]?.["위임조문정보"])) {
             const j = it["조정보"] || {};
-            map.set(artKey(j["조문번호"], j["조문가지번호"]), it["위임정보"]);
+            const key = artKey(j["조문번호"], j["조문가지번호"]);
+            // 같은 출처 조문이 여러 번 반환되면 기존 위임정보를 덮어쓰지 않고 누적한다.
+            map.set(key, [...toArr(map.get(key)), ...toArr(it["위임정보"])]);
           }
           if (!map.size) console.warn(`위임조문 비어있음 (MST: ${lawId}):`, JSON.stringify(data)?.slice(0, 200));
           return map;
@@ -532,8 +534,8 @@ function delegatedRefs(infos, selfName) {
     const kinds = toArr(w["위임구분"]);
     const titles = toArr(w["위임법령제목"]);
     for (const e of toArr(w["위임법령조문정보"])) {
-      const nums = String(e["위임법령조문번호"] ?? "0").split(",");
-      if (nums.every((n) => n === "0")) continue;
+      const nums = String(e["위임법령조문번호"] ?? "0").split(",").map((n) => n.trim());
+      if (nums.every((n) => !n || n === "0")) continue;
       const text = e["라인텍스트"] || "";
       const named = text.match(/「([^」]+)」/)?.[1];
       
@@ -553,15 +555,15 @@ function delegatedRefs(infos, selfName) {
       const kind = kinds[0] || "인용법령";
       if (!["인용법령", "시행령", "시행규칙", "위임법령"].includes(kind)) continue;
 
-      const gajis = String(e["위임법령조문가지번호"] ?? "").split(",");
+      const gajis = String(e["위임법령조문가지번호"] ?? "").split(",").map((n) => n.trim());
       nums.forEach((n, i) => {
         if (n && n !== "0") {
-          out.push({ 
-            kind, 
-            lawName: targetLawName, 
-            num: artKey(n, gajis[i] || "0"), 
-            from: e["조항호목"], 
-            lineText: text 
+          out.push({
+            kind,
+            lawName: targetLawName,
+            num: artKey(n, gajis[i] || "0"),
+            from: e["조항호목"],
+            lineText: text,
           });
         }
         });
@@ -940,18 +942,23 @@ const LawService = {
       if (!articleNum) return;
 
       const vk = `${key}_${articleNum}`;
-      if (visited.has(vk)) return;
+      const alreadyVisited = visited.has(vk);
+      // 같은 대상 조문이라도 라인텍스트/출처가 다르면 각 위임 참조를 별도로 보존한다.
+      if (alreadyVisited && !opt.lineText) return;
       visited.add(vk);
 
       const found = await getArticle(key, articleNum);
       if (!found || found.isDeleted) return;
 
       const ck = `${found.lawName}_${found.num}`;
-      if (collected.has(ck)) return;
+    
       const article = opt.lineText ? { ...found, content: sliceRange(found, opt.lineText) } : found;
-      collected.set(ck, { article, opt });
+      const outputKey = opt.lineText
+        ? `${ck}|${opt.kind || ""}|${opt.from || ""}|${opt.lineText}`
+        : ck;
+      if (!collected.has(outputKey)) collected.set(outputKey, { article, opt });
 
-      if (opt.kind === "시행령" || opt.kind === "시행규칙" || currentDepth >= maxDepth) return;
+      if (alreadyVisited || opt.kind === "시행령" || opt.kind === "시행규칙" || currentDepth >= maxDepth) return;
 
       const { internal, external } = extractReferences(article.content);
       
@@ -976,10 +983,9 @@ const LawService = {
     await Promise.all(delegatedTasks);
     await collectArticle(lawId, parsed.num);
 
-    const selfCk = `${parsed.lawName}_${parsed.num}`;
-    const articleRefs = Array.from(collected.entries())
-      .filter(([k]) => k !== selfCk)
-      .map(([, { article: a, opt }]) => {
+    const articleRefs = Array.from(collected.values())
+      .filter(({ article: a }) => !(a.lawName === parsed.lawName && a.num === parsed.num))
+      .map(({ article: a, opt }) => {
         const label = opt.from ? `${opt.from} ${opt.kind === "인용법령" ? "인용" : "위임"} → ` : "";
         return `[${label}${a.lawName} ${a.num}]\n${a.content}`;
       });
