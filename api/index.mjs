@@ -532,23 +532,33 @@ function delegatedRefs(infos, selfName) {
   const out = [];
   for (const w of toArr(infos)) {
     const kinds = toArr(w["위임구분"]);
-    const titles = toArr(w["위임법령제목"]);
+    // 조항호목이 바뀌면 법령명 상속을 끊는다. 같은 조항호목에서만 직전 법령명을 상속한다.
+     let previousClause = null;
+     let previousLawName = selfName;
     for (const e of toArr(w["위임법령조문정보"])) {
       const nums = String(e["위임법령조문번호"] ?? "0").split(",").map((n) => n.trim());
-      if (nums.every((n) => !n || n === "0")) continue;
+      
       const text = e["라인텍스트"] || "";
       const named = text.match(/「([^」]+)」/)?.[1];
+
+      const clauseKey = String(e["조항호목"] ?? "").trim();
+      let targetLawName;
       
-      let targetLawName = selfName;
       if (named) {
         targetLawName = named;
-      } else if (titles.length === 1 && titles[0]) {
-        // 대상 법령이 하나로 특정될 때만 제목을 사용한다.
-        targetLawName = titles[0];
-        } else if (titles.includes(selfName)) {
-        // 제목이 여러 개면 첫 번째 제목을 임의 선택하지 않고 현재 법령을 우선한다.
-        targetLawName = selfName;
+      } else if (clauseKey && clauseKey === previousClause) {
+        // 같은 조항호목 안에서 법령명이 생략되면 직전 법령명을 상속한다.
+       targetLawName = previousLawName;
+      } else {
+  // 조항호목이 달라진 경계의 첫 생략 항목은 본 법령으로 처리한다.
+       targetLawName = selfName;
       }
+
+      previousClause = clauseKey;
+
+      previousLawName = targetLawName;
+       if (nums.every((n) => n === "0")) continue; 
+       
 
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
         targetLawName = `${selfName} ${targetLawName}`;
