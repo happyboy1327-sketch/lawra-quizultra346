@@ -570,10 +570,12 @@ function delegatedRefs(infos, selfName) {
        
 
       if (targetLawName === "시행령" || targetLawName === "시행규칙") {
-        targetLawName = `${selfName} ${targetLawName}`;
-      } else if (targetLawName && !targetLawName.includes(selfName) && (kinds.includes("시행령") || kinds.includes("시행규칙"))) {
-        targetLawName = `${selfName} ${targetLawName}`;
-      }
+  targetLawName = `${selfName} ${targetLawName}`;
+} else if (kinds.includes("시행령") && !targetLawName.endsWith("시행령")) {
+  targetLawName = `${targetLawName} 시행령`;
+} else if (kinds.includes("시행규칙") && !targetLawName.endsWith("시행규칙")) {
+  targetLawName = `${targetLawName} 시행규칙`;
+}
 
       const kind = kinds[0] || "인용법령";
       if (!["인용법령", "시행령", "시행규칙", "위임법령"].includes(kind)) continue;
