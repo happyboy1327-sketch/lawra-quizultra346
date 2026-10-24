@@ -365,11 +365,11 @@ const Utils = {
       category: this.normalizeText(quiz.category),
       explanation,
       question: fixGrammarAndTimeline(this.normalizeText(quiz.question)),
-      answer: matchedIndex !== -1 ? rawOptions[matchedIndex].text : fixGrammarAndTimeline(this.normalizeText(quiz.answer)),
+      answer: targetIndex !== -1 ? rawOptions[targetIndex].text : fixGrammarAndTimeline(this.normalizeText(quiz.answer)), // ✅ targetIndex로 수정
       timer_sec: Number(quiz.timer_sec) || 15,
       options: options.map(opt => ({ ...opt, text: fixGrammarAndTimeline(opt.text) })),
     };
-
+    
     normalized.explanation.string = normalized.explanation.string
        .replace(/^\s*\[[^\]]*(스니펫|원문 조문|수정된 해설|해설)[^\]]*\]\s*/g, "")
        .replace(/해설의 Boolean은 true[^.\n]*\./g, "")
