@@ -557,7 +557,7 @@ function delegatedRefs(infos, selfName) {
       } else if (clauseKey && clauseKey === previousClause && hasSharedTitleWord) {
         targetLawName = previousLawName; // 동일 블록 내 조건 부합 시 상속 유지
       } else {
-        targetLawName = previousLawName; // 무조건 본법령으로 튕기지 않고 블록 내 직전 법령명 유지
+        targetLawName = selfName; // 무조건 본법령으로 튕기지 않고 블록 내 직전 법령명 유지
       }
 
       previousClause = clauseKey;
