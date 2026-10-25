@@ -1405,7 +1405,7 @@ const QuizService = {
 
       // 💡 [핵심 ㅅㅂ 수정] 헌법이 '아닐 때만' stop 토큰 배열을 주입하고, 헌법이면 stop 옵션 자체를 아예 넣지 않음
       if (!isConstitution) {
-        requestOptions.stop = ["[IDK]", "</s>"];
+        requestOptions.stop = ["[IDK]"];
       }
 
       const response = await client.chat.complete(requestOptions);
