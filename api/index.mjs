@@ -1258,7 +1258,7 @@ ${JSON.stringify(quiz, null, 2)}
 11. 각 보기 텍스트는 보기 하나의 문장만 담아야 한다. 보기 텍스트 안에 번호를 붙이거나 두 개 이상의 보기를 이어 쓰면 안 된다.
 
 판정 기준:
-- supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없다.
+- supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다.
 - unsupported: 원문과 충돌하거나, 원문이 뒷받침하지 않는 결론·인용·추론이 있다.
 - insufficient: 주어진 원문/사실만으로 결론을 확정할 수 없다.
 
@@ -1268,7 +1268,7 @@ ${JSON.stringify(quiz, null, 2)}
   "verdict": "supported",
   "issues": [],
   "claim_evidence": [
-    {"claim": "핵심 법적 주장", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유"}
+    {"claim": "핵심 법적 주장, 예외 사항과 단서", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유"}
   ],
   "missing_information": [],
   "summary": "감사 결과 요약"
