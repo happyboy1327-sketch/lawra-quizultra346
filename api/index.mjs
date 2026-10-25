@@ -1259,7 +1259,7 @@ ${JSON.stringify(quiz, null, 2)}
 
 판정 기준:
 - supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다.
-- unsupported: 원문과 충돌하거나, 원문이 뒷받침하지 않는 결론·인용·추론이 있다.
+- unsupported: 원문과 충돌하거나, 원문이 뒷받침하지 않는 결론·인용·추론이 있다. 또한, 법적 주체와 예외 단서가 맞지 않다.
 - insufficient: 주어진 원문/사실만으로 결론을 확정할 수 없다.
 
 반드시 JSON만 출력한다. verdict가 supported가 아니면 pass는 false다.
@@ -1268,7 +1268,7 @@ ${JSON.stringify(quiz, null, 2)}
   "verdict": "supported",
   "issues": [],
   "claim_evidence": [
-    {"claim": "핵심 법적 주장, 예외 사항과 단서", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유"}
+    {"claim": "핵심 법적 주장, 예외 사항과 단서", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유와 법적 주체"}
   ],
   "missing_information": [],
   "summary": "감사 결과 요약"
