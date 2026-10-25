@@ -1474,13 +1474,19 @@ const QuizService = {
       };  
 
       // 💡 [핵심 ㅅㅂ 수정] 헌법이 '아닐 때만' stop 토큰 배열을 주입하고, 헌법이면 stop 옵션 자체를 아예 넣지 않음
-      if (!isConstitution) {
+      /*if (!isConstitution) {
         requestOptions.stop = ["[IDK]"];
-      }
+      }*/
 
       const response = await client.chat.complete(requestOptions);
       
+      
       let contentRes = response?.choices?.[0]?.message?.content;
+
+// 💡 여기에 로그를 심어 실제로 모델이 뭐라고 궁시렁거렸는지 확인합니다.
+console.log("================ MISTRAL RAW RESPONSE ================");
+console.log(contentRes);
+console.log("=======================================================");
       if (typeof contentRes !== "string") return null;
 
       let rawQuiz = null;
