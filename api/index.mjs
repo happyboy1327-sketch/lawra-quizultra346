@@ -75,12 +75,13 @@ const Calc = {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     // 1. 고정 양력 공휴일 (신정, 삼일절, 어린이날, 현충일, 광복절, 개천절, 한글날, 성탄절)
-    // *제헌절은 국경일이지만 공휴일(빨간날)이 아니므로 제외
+  
     const solarHolidays = [
       '01-01', '03-01', '05-05', '06-06', '08-15', '10-03', '10-09', '12-25'
     ];
     const md = dateStr.substring(5);
     if (solarHolidays.includes(md)) return true;
+    if (year >= 2026 && md === '07-17') return true;
 
     // 2. 음력 공휴일 변환 데이터 (설날, 추석, 부처님오신날)
     // 2024년~2030년 데이터 탑재 (필요 시 연도 확장 가능)
