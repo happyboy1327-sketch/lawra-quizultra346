@@ -1254,6 +1254,7 @@ ${JSON.stringify(quiz, null, 2)}
 17. 구체적인 사안의 경우 개별적으로 검토한 부분이 빠졌다면 신중히 검토하여 추가 및 수정하시오. 다중 시행령이 빠졌다면 반드시 삽입하시오.
 18. 시간적으로 역설이 나타났을 경우 ( 나쁜 예: A씨는 2023년 1월 1일 체결된 주택임대차계약의 임대차기간이 만료되기 6개월 전인 2022년 7월 1일에 임대인 B사에게 계약갱신을 요구하였습니다.) 반드시 올바른 문장으로 고치시오.
 (고친 예: A씨는 2023년 1월 1일 임대차 계약이 만료된다. 만료되기 6개월 전인 2022년 7월 1일에 임대인 B사에게 계약갱신을 요구하였습니다.) 
+19. 후단의 단서를 간과하여 책임을 면제하도록 잘못 해석하는 경우
 `
 };
 
@@ -1463,7 +1464,7 @@ const QuizService = {
       const articleContext = String(article?.content || "").trim();
       const refContent = String(article.referencedContent || "").trim();
       const prompt = PROMPTS.blindSolve(quiz, articleContext, refContent);
-      const res = await this.requestMistral(prompt, "high");
+      const res = await this.requestMistral(prompt, "xhigh");
 
       const chosenNumber = Number(res?.chosen_number);
       if (!chosenNumber || chosenNumber < 1 || chosenNumber > 4) {
