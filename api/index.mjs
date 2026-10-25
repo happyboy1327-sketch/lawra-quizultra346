@@ -1559,8 +1559,12 @@ const QuizService = {
       const normalizeQuote = (value) => String(value || "").replace(/\s+/g, "").replace(/[“”‘’"'「」『』]/g, "");
       const sourceNormalized = normalizeQuote(`${sourceText}\n${refContent || ""}`);
       const unsupportedQuotes = result.claim_evidence
-        .filter((item) => !sourceNormalized.includes(normalizeQuote(item.evidence_quote)))
-        .map((item) => String(item.evidence_quote).slice(0, 100));
+  .filter(item => {
+    const q = normalizeQuote(item.evidence_quote);
+    if (sourceNormalized.includes(q)) return false;
+    return getSimilarity(q, sourceNormalized) < 0.8;
+  })
+  .map(item => String(item.evidence_quote).slice(0, 100));
       if (unsupportedQuotes.length) {
         return {
           valid: false,
