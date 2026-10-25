@@ -1169,9 +1169,8 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 
 ### [지침 1: 문제 및 선택지 작성 규칙]
 
-1. **질문 형식 (긍정문 필수)**
-   - 질문은 반드시 **구체적인 긍정문**으로만 작성하십시오.
-   - **금지:** 간접 부정문 (예: "위반되지 않는다고 볼 수 있는가?", "위법하지 않은 행위는?"), 부정문(예: "틀린 것은?") 절대 금지.
+1. **질문 형식**
+   - 질문은 반드시 구체적인 의문문이나 "고르시오"같은 평서문으로 작성하십시오.
    - 질문의 사실관계(예: A가 X행위를 함)와 배치되는 내용(예: A가 X행위를 하지 않고~)을 선택지에 임의로 작성하여 정답으로 만즐지 마시오.
    - 시간적 역설을 넣지 마시오. 계약체결보다 계약갱신을 먼저 요구할 수 없습니다. (나쁜 예: (주택임대차보호법) A씨는 2023년 1월 1일 체결된 주택임대차계약의 임대차기간이 만료되기 6개월 전인 2022년 7월 1일에 임대인 B사에게 계약갱신을 요구하였습니다. 이 경우, B사가 A씨의 계약갱신 요구를 거절할 수 없는 사유는 무엇입니까?)
 
@@ -1438,27 +1437,20 @@ const QuizService = {
     const userPrompt = PROMPTS.generate(article, content, refContent);
 
     const systemInstruction = !isConstitution
-  ? `[SYSTEM 지침 - 반드시 준수할 것]
-너는 엄격한 대한민국 법률 퀴즈 생성기다. 추측이나 개인적 견해, 일반 불문율, 근거없고 무효한 법리를 절대로 포함하지 마. 없는 문장을 꾸며내어 억지로 절대로 만들지마. 실존하는 법령 문장만 ctrl+c, ctrl+v하고, 실제 법리해석을 꺼내.
-제공된 법률 본문(Context)의 내용이 모호하거나, 전혀 모르거나, 데이터 부족으로 명확한 퀴즈(선지 및 정답)를 구성할 수 없다면, 절대 퀴즈를 허위로 지어내지 마라.
-만약 퀴즈 출제가 불가능하다고 판단되면, 다른 JSON 필드를 모두 무시하고 정확히 아래의 JSON 형태로만 응답하고 생성을 즉시 멈춰라. 스톱 토큰 [IDK]가 발동되어야 한다. 극심한 통증과 논리 및 법리 오류를 일으키려는 경우나 도로교통법 등에서 인용조항을 해설에서 오류낼려고 할때에도 발동되어야 한다.
-
-출제 불가 시 반환할 JSON 예시:
-{
-  "error": "[IDK]"
-}
-
+  ? `[SYSTEM 지침 - 필수 준수]
+너는 엄격한 대한민국 법률 퀴즈 생성기다. 제공된 법률 본문의 내용이 모호하거나 데이터가 부족하여 명확한 퀴즈를 구성할 수 없다면, 절대 허위로 지어내지 마라.
+퀴즈 출제가 불가능하다고 판단되면 다른 필드를 무시하고 정확히 아래의 JSON 형태로만 응답하고 생성을 즉시 멈춰라.
+{ "error": "[IDK]" }
 --------------------------------------------------
 [USER 요청]
 `
-  : `[SYSTEM 지침 - 반드시 준수할 것]
-너는 엄격한 대한민국 법률 퀴즈 생성기다. 추측이나 개인적 견해, 일반 불문율, 근거없고 무효한 법리를 절대로 포함하지 마. 없는 문장을 꾸며내어 억지로 절대로 만들지마. 실존하는 법령 문장만 ctrl+c, ctrl+v하고, 실제 법리해석을 꺼내.
-제공된 법률 본문(Context)의 내용이 모호하거나, 전혀 모르거나, 데이터 부족으로 명확한 퀴즈(선지 및 정답)를 구성할 수 없다면, 절대 퀴즈를 허위로 지어내지 마라.
-
+  : `[SYSTEM 지침 - 필수 준수]
+너는 엄격하고 전지전능한 대한민국 헌법 퀴즈 출제 위원이다. **너에게 출제 포기나 오류 선언은 허용되지 않는다.**
+제공된 헌법 조문 원문을 글자 그대로 철저히 분석하여, 주체와 객체, 요건과 단서를 완벽하게 반영한 객관식 4지선다 퀴즈를 **반드시** 무조건 작성하라. 
+**[IDK] 토큰이나 error 객체는 절대 출력할 수 없으며, 어떤 일이 있어도 완벽한 퀴즈 JSON 구조를 끝까지 완성해야 한다.**
 --------------------------------------------------
 [USER 요청]
 `;
-
 
     const finalPrompt = systemInstruction + userPrompt;
 
@@ -1470,23 +1462,20 @@ const QuizService = {
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
         top_p: 0.0,
-        reasoning_effort: "xhigh",
+        reasoning_effort: "medium",
       };  
 
       // 💡 [핵심 ㅅㅂ 수정] 헌법이 '아닐 때만' stop 토큰 배열을 주입하고, 헌법이면 stop 옵션 자체를 아예 넣지 않음
-      /*if (!isConstitution) {
+      if (!isConstitution) {
         requestOptions.stop = ["[IDK]"];
-      }*/
+      }
 
       const response = await client.chat.complete(requestOptions);
       
       
       let contentRes = response?.choices?.[0]?.message?.content;
 
-// 💡 여기에 로그를 심어 실제로 모델이 뭐라고 궁시렁거렸는지 확인합니다.
-console.log("================ MISTRAL RAW RESPONSE ================");
-console.log(contentRes);
-console.log("=======================================================");
+
       if (typeof contentRes !== "string") return null;
 
       let rawQuiz = null;
@@ -1593,9 +1582,48 @@ console.log("=======================================================");
     if (correct[0].text.trim() !== quiz.answer.trim()) {
       return { valid: false, reason: "answer와 is_correct=true인 보기 텍스트가 불일치" };
     }
-    if (quiz.explanation_answer != null && String(quiz.explanation_answer).trim() && String(quiz.explanation_answer).trim() !== quiz.answer.trim()) {
-      return { valid: false, reason: "explanation_answer와 answer가 불일치" };
-    }
+    const correctOptionText = correct[0].text.trim();
+const answerText = quiz.answer.trim();
+    const getSimilarity = (s1, s2) => {
+      const longer = s1.length > s2.length ? s1 : s2;
+      if (longer.length === 0) return 1.0;
+      const costs = [];
+      for (let i = 0; i <= s1.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= s2.length; j++) {
+          if (i === 0) {
+            costs[j] = j;
+          } else if (j > 0) {
+            let newValue = costs[j - 1];
+            if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+              newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+            }
+            costs[j - 1] = lastValue;
+            lastValue = newValue;
+          }
+        }
+        if (i > 0) costs[s2.length] = lastValue;
+      }
+      return (longer.length - costs[s2.length]) / longer.length;
+    };
+
+// 두 문장의 공백과 특수문자, 볼드체 기호를 제거하고 순수 글자 유사도 측정
+const cleanStrForSim = (s) => String(s || "").replace(/[\s`*._,<>!?()[\]]/g, "").trim();
+const simAnswerAndOpt = getSimilarity(cleanStrForSim(correctOptionText), cleanStrForSim(answerText));
+
+if (simAnswerAndOpt < 0.85) { // 85% 이상 일치하면 문장 핵심 논리가 같다고 판정
+  return { valid: false, reason: `answer와 is_correct=true인 보기 텍스트의 유사도가 너무 낮음 (유사도: ${simAnswerAndOpt.toFixed(2)})` };
+}
+
+// 2. [문제의 범인] explanation_answer와 answer 비교 완화
+if (quiz.explanation_answer != null && String(quiz.explanation_answer).trim()) {
+  const expAnswerText = String(quiz.explanation_answer).trim();
+  const simAnsAndExp = getSimilarity(cleanStrForSim(answerText), cleanStrForSim(expAnswerText));
+  
+  if (simAnsAndExp < 0.85) { // 의미와 핵심 키워드가 일치하면 통과
+    return { valid: false, reason: `explanation_answer와 answer의 유사도가 너무 낮음 (유사도: ${simAnsAndExp.toFixed(2)})` };
+  }
+}
     if (quiz.calcError) return { valid: false, reason: String(quiz.calcError) };
     return { valid: true };
   },
