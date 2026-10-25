@@ -1484,6 +1484,41 @@ const QuizService = {
     return { valid: true };
   },
 
+  // 법령 원문에 존재하지 않는 항 번호 인용 차단
+validateClauseReferences(quiz, article, refContent) {
+  const source = String(
+    `${article?.content || ""}\n${refContent || ""}`
+  ).replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, ch =>
+    `제${"①②③④⑤⑥⑦⑧⑨⑩".indexOf(ch) + 1}항`
+  );
+
+  const output = [
+    quiz?.question,
+    quiz?.answer,
+    quiz?.explanation?.string,
+    quiz?.explanation_answer,
+    ...(quiz?.options || []).map(o => o?.text)
+  ].filter(Boolean).join("\n");
+
+  const cited = [
+    ...new Set(
+      [...output.matchAll(/제\s*(\d+)\s*항/g)]
+        .map(m => Number(m[1]))
+    )
+  ];
+
+  const absent = cited.filter(n =>
+    !new RegExp(`제\\s*${n}\\s*항`).test(source)
+  );
+
+  return absent.length
+    ? {
+        valid: false,
+        reason: `원문에 없는 항 번호: ${absent.map(n => `제${n}항`).join(", ")}`
+      }
+    : { valid: true };
+},
+
   validateExplanationNumbers(quiz, article, refContent) {
   const norm = (s) => String(s || "").replace(/개월/g, "월").replace(/\s+/g, "");
   const src = norm(`${article.content}${refContent}`);
@@ -1540,6 +1575,22 @@ const QuizService = {
       console.warn(`  └ [1단계 실패] ${step1.reason}`);
       return { valid: false, step: 1, reason: step1.reason, quiz };
     }
+    const clauseCheck = this.validateClauseReferences(
+  quiz,
+  article,
+  refContent
+);
+
+if (!clauseCheck.valid) {
+  console.warn(`[항 번호 검증 실패] ${clauseCheck.reason}`);
+
+  return {
+    valid: false,
+    step: 1,
+    reason: clauseCheck.reason,
+    quiz
+  };
+}
     const step1a = this.validateExplanationNumbers(quiz, article, refContent);
 if (!step1a.valid) {
   console.warn(`  └ [1-a단계 실패] ${step1a.reason}`);
