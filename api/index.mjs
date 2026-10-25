@@ -310,49 +310,82 @@ const Utils = {
     const expText = this.normalizeText(quiz.explanation_answer || "");
     const ansText = this.normalizeText(quiz.answer || "");
     
+    const exactIndexes = (value) => {
+      const key = cleanStr(value);
+      if (!key) return [];
+      return rawOptions
+        .map((option, index) => cleanStr(option.text) === key ? index : -1)
+        .filter(index => index !== -1);
+    };
+
+    const flaggedIndexes = rawOptions
+      .map((option, index) => option.is_correct ? index : -1)
+      .filter(index => index !== -1);
+
+    const expMatches = exactIndexes(expText);
+    const ansMatches = exactIndexes(ansText);
     let targetIndex = -1;
 
-    // 1단계: 완전 일치 매칭 (explanation_answer -> answer 순)
-    if (expText) targetIndex = rawOptions.findIndex(o => cleanStr(o.text) === cleanStr(expText));
-    if (targetIndex === -1 && ansText) targetIndex = rawOptions.findIndex(o => cleanStr(o.text) === cleanStr(ansText));
+    // is_correct가 정확히 하나면 해당 플래그를 우선한다.
+    if (flaggedIndexes.length === 1) {
+      targetIndex = flaggedIndexes[0];
 
-    // 2단계: 문자열 유사도가 최고점인 최적 보기 탐색 (70% 유사도 완화 가드)
-    if (targetIndex === -1) {
-      let maxSim = -1;
-      const queryStr = cleanStr(expText || ansText);
-      if (queryStr) {
-        rawOptions.forEach((o, idx) => {
-          const sim = getSimilarity(cleanStr(o.text), queryStr);
-          if (sim > maxSim && sim >= 0.7) {
-            maxSim = sim;
-            targetIndex = idx;
+  const conflictsWithExplanationAnswer =
+        expMatches.length === 1 && expMatches[0] !== targetIndex;
+      const conflictsWithAnswer =
+        ansMatches.length === 1 && ansMatches[0] !== targetIndex;
+
+      // 정답 플래그와 텍스트가 충돌하면 조용히 덮어쓰지 않고 검증 실패 처리한다.
+      if (conflictsWithExplanationAnswer || conflictsWithAnswer) {
+        explanation.Boolean = false;
+        console.warn(
+          "[normalizeQuiz] 정답 플래그와 answer/explanation_answer가 충돌합니다."
+        );
+      }
+    } else {
+      // 정답 플래그가 없거나 여러 개일 때만 텍스트로 보완한다.
+      const expIndex = expMatches.length === 1 ? expMatches[0] : -1;
+      const ansIndex = ansMatches.length === 1 ? ansMatches[0] : -1;
+
+      if (expIndex !== -1 && ansIndex !== -1 && expIndex !== ansIndex) {
+        explanation.Boolean = false;
+        console.warn(
+          "[normalizeQuiz] explanation_answer와 answer가 충돌합니다."
+        );
+      } else if (expIndex !== -1) {
+        targetIndex = expIndex;
+      } else if (ansIndex !== -1) {
+        targetIndex = ansIndex;
+} else {
+        // 완전 일치가 없을 때만 유사도 매칭을 사용한다.
+        const queryStr = cleanStr(expText || ansText);
+        if (queryStr) {
+          const scored = rawOptions
+            .map((option, index) => ({
+              index,
+              score: getSimilarity(cleanStr(option.text), queryStr),
+            }))
+            .sort((a, b) => b.score - a.score);
+
+          if (
+            scored[0]?.score >= 0.7 &&
+            (!scored[1] || scored[0].score - scored[1].score >= 0.08)
+          ) {
+            targetIndex = scored[0].index;
+          } else if (scored[0]?.score >= 0.7) {
+            explanation.Boolean = false;
+            console.warn(
+              "[normalizeQuiz] 정답 후보가 모호합니다."
+            );
           }
-        });
-      }
+        }
+     }
     }
 
-    // 3단계: 여전히 매칭 실패 시 수동 지정된 is_correct 플래그 백업 사용
-    if (targetIndex === -1) {
-      targetIndex = rawOptions.findIndex(o => o.is_correct === true);
-    }
-
-    // 인덱스가 정상적으로 확보된 경우, 텍스트 일치 처리 및 플래그 덮어쓰기 보정
-    let finalAnswerText = ansText || expText;
-    if (targetIndex !== -1) {
-      const matchedOptionText = rawOptions[targetIndex].text;
-      
-      // 날짜 데이터가 다르게 파싱되었을 경우 오차 보정 처리
-      const optDate = this.extractDate(matchedOptionText);
-      const expDate = this.extractDate(expText || ansText);
-      if (optDate && expDate && optDate !== expDate) {
-        rawOptions[targetIndex].text = matchedOptionText.replace(optDate, expDate);
-      } else if (expText && cleanStr(matchedOptionText) !== cleanStr(expText)) {
-        rawOptions[targetIndex].text = expText;
-      }
-      
-      finalAnswerText = rawOptions[targetIndex].text;
-    }
-
+    // 보기 원문은 answer나 해설 문구로 덮어쓰지 않는다.
+    const finalAnswerText =
+      targetIndex !== -1 ? rawOptions[targetIndex].text : "";
+    
     const options = rawOptions.map((opt, idx) => ({
       ...opt,
       is_correct: idx === targetIndex
