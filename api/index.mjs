@@ -67,20 +67,89 @@ app.use((req, res, next) => {
 // ============================================================================
 
 const Calc = {
+  // 대한민국 주요 공휴일 판별 함수 (양력 및 음력 양력 변환 반영)
+  isHoliday(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1; // 1~12
+    const day = date.getDate();
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    // 1. 고정 양력 공휴일 (신정, 삼일절, 어린이날, 현충일, 광복절, 개천절, 한글날, 성탄절)
+    // *제헌절은 국경일이지만 공휴일(빨간날)이 아니므로 제외
+    const solarHolidays = [
+      '01-01', '03-01', '05-05', '06-06', '08-15', '10-03', '10-09', '12-25'
+    ];
+    const md = dateStr.substring(5);
+    if (solarHolidays.includes(md)) return true;
+
+    // 2. 음력 공휴일 변환 데이터 (설날, 추석, 부처님오신날)
+    // 2024년~2030년 데이터 탑재 (필요 시 연도 확장 가능)
+    const lunarHolidays = [
+      // 설날 연휴 (전날, 당일, 다음날)
+      '2024-02-09', '2024-02-10', '2024-02-11',
+      '2025-01-28', '2025-01-29', '2025-01-30',
+      '2026-02-16', '2026-02-17', '2026-02-18',
+      '2027-02-06', '2027-02-07', '2027-02-08',
+      '2028-01-26', '2028-01-27', '2028-01-28',
+      '2029-02-12', '2029-02-13', '2029-02-14',
+      '2030-02-02', '2030-02-03', '2030-02-04',
+      // 부처님 오신날
+      '2024-05-15', '2025-05-05', '2026-05-24', '2027-05-13', '2028-05-02', '2029-05-20', '2030-05-09',
+      // 추석 연휴 (전날, 당일, 다음날)
+      '2024-09-16', '2024-09-17', '2024-09-18',
+      '2025-10-05', '2025-10-06', '2025-10-07',
+      '2026-09-24', '2026-09-25', '2026-09-26',
+      '2027-09-14', '2027-09-15', '2027-09-16',
+      '2028-10-02', '2028-10-03', '2028-10-04',
+      '2029-09-21', '2029-09-22', '2029-09-23',
+      '2030-10-11', '2030-10-12', '2030-10-13'
+    ];
+    if (lunarHolidays.includes(dateStr)) return true;
+
+    // 3. 대체공휴일 (일요일이나 다른 공휴일과 겹칠 때 지정되는 일자)
+    const substituteHolidays = [
+      '2024-02-12', '2024-05-06', '2025-03-03', '2025-05-06', '2026-03-02', 
+      '2026-05-25', '2027-08-16', '2027-10-04', '2028-08-16', '2028-10-05', 
+      '2029-03-02', '2029-05-07', '2029-09-24', '2030-03-04', '2030-05-06'
+    ];
+    if (substituteHolidays.includes(dateStr)) return true;
+
+    return false;
+  },
+
   addBusinessDays(startDate, days) {
-    let current = new Date(startDate);
+    // 입력값 파싱: 시/분/초가 섞여 타임존 오프셋 버그가 나는 것을 원천 차단
+    let d = typeof startDate === 'string' ? new Date(startDate.replace(/\./g, '-')) : new Date(startDate);
+    
+    let year = d.getFullYear();
+    let month = d.getMonth();
+    let date = d.getDate();
+
     let absDays = Math.abs(days);
     let step = days >= 0 ? 1 : -1;
 
     while (absDays > 0) {
-      current.setDate(current.getDate() + step);
-      const dayOfWeek = current.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      // 버그 해결: setDate(getDate() + step) 대신 연/월/일 값 자체를 증가시킨 후 새 Date 객체 생성
+      date += step;
+      const current = new Date(year, month, date);
+      
+      const dayOfWeek = current.getDay(); // 0: 일요일, 6: 토요일
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+      // 주말도 아니고 공휴일도 아닐 때만 영업일 카운트 감소
+      if (!isWeekend && !this.isHoliday(current)) {
         absDays--;
       }
+
+      // 루프가 끝날 때 최종 날짜 동기화를 위해 변수 갱신
+      year = current.getFullYear();
+      month = current.getMonth();
+      date = current.getDate();
     }
-    return current;
+
+    return new Date(year, month, date);
   },
+
 
   date(base, y, m, val, type) {
     const [by, bm, bd] = String(base).split("-").map(Number);
@@ -127,6 +196,7 @@ run(expr) {
   return null;
 },
 };
+
 function parseCalcItem(item) {
   let s = item;
   if (s && typeof s === "object") s = s.expr || s.formula || s.value || Object.values(s).join(";");
