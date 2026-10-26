@@ -1627,7 +1627,7 @@ const answerText = quiz.answer.trim();
 const cleanStrForSim = (s) => String(s || "").replace(/[\s`*._,<>!?()[\]]/g, "").trim();
 const simAnswerAndOpt = getSimilarity(cleanStrForSim(correctOptionText), cleanStrForSim(answerText));
 
-if (simAnswerAndOpt < 0.85) { // 85% 이상 일치하면 문장 핵심 논리가 같다고 판정
+if (simAnswerAndOpt < 0.8) { // 85% 이상 일치하면 문장 핵심 논리가 같다고 판정
   return { valid: false, reason: `answer와 is_correct=true인 보기 텍스트의 유사도가 너무 낮음 (유사도: ${simAnswerAndOpt.toFixed(2)})` };
 }
 
