@@ -1330,24 +1330,33 @@ ${JSON.stringify(quiz, null, 2)}
 9. 한국어 교정자로서 질문·보기·정답·해설의 문법, 조사와 어미, 주어·서술어 호응, 자연스러운 법률 용어, 문장 간 논리 연결, 불필요한 반복을 별도로 검사한다.
 10. 질문에 정답을 사실상 미리 알려주는 문장을 넣고 다시 같은 내용을 묻거나, 법률 용어를 잘못 조합하거나, 원문이 뒷받침하지 않는 추상적 평가를 덧붙이거나, 보기가 한 줄에 이어 붙은 형태로 생성되면 반드시 issues에 구체적으로 적고 pass=false로 판정한다.
 11. 각 보기 텍스트는 보기 하나의 문장만 담아야 한다. 보기 텍스트 안에 번호를 붙이거나 두 개 이상의 보기를 이어 쓰면 안 된다.
+12. 질문이 요구하는 논리 방향을 먼저 분류한다. question_polarity는 "negative", "positive", "direct" 중 하나다. "옳지 않은 것", "틀린 것", "잘못된 것", "적절하지 않은 것", "해당하지 않는 것", "타당하지 않은 것"처럼 보기의 법률상 주장이 틀린 것을 고르는 질문은 negative다. 
+"옳은 것", "맞는 것", "타당한 것", "적절한 것"처럼 보기의 법률상 주장이 맞는 것을 고르는 질문은 positive다. "어떤 행위가 금지되는가", "무엇을 할 수 없는가", "어떤 행위가 위반인가"처럼 행위나 법적 효과 자체를 직접 묻는 질문은 direct다. 질문이 모호하거나 양방향으로 해석되면 pass=false다.
+13. is_correct=true인 보기와 answer, explanation_answer가 동일한 보기 하나를 찾고, 그 보기가 유일하게 matches_question=true인지 확인한다. 
+선택된 정답이 질문의 논리 방향과 불일치하거나, matches_question=true인 보기가 0개 또는 2개 이상이면 pass=false다. is_correct 플래그나 기존 해설의 결론을 정답의 진실성에 대한 증거로 취급하지 마라. 
+polarity가 negative이면 statement_truth=false인 보기만 matches_question=true여야 한다. positive이면 statement_truth=true인 보기만 matches_question=true여야 한다. direct이면 문장 자체의 진위와 별도로 질문에 직접 답하는지 판단한다.
 
 판정 기준:
-- supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다.
+- supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다. 또한, 네 보기의 진위가 모두 타당하다고 검증됨.
 - unsupported: 원문과 충돌하거나, 원문이 뒷받침하지 않는 결론·인용·추론이 있다. 또한, 법적 주체와 예외 단서가 맞지 않다.
-- insufficient: 주어진 원문/사실만으로 결론을 확정할 수 없다.
+- insufficient: 주어진 원문/사실만으로 결론과 보기의 진위를 확정할 수 없다.
 
-반드시 JSON만 출력한다. verdict가 supported가 아니면 pass는 false다.
-{
-  "pass": true,
-  "verdict": "supported",
-  "issues": [],
-  "claim_evidence": [
-    {"claim": "핵심 법적 주장, 예외 사항과 단서", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유와 법적 주체"}
-  ],
-  "missing_information": [],
-  "summary": "감사 결과 요약"
-}
-`,
+반드시 JSON만 출력한다. verdict가 supported가 아니거나 issues가 하나라도 있으면 pass=false다. 아래 필드를 모두 포함한다.
+ {
+   "pass": true,
+   "verdict": "supported",
+   "question_polarity": "positive",
+  "selected_option_index": 0,
+  "option_assessments": [
+    {"option_index": 0, "statement_truth": "true", "matches_question": true, "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
+    {"option_index": 1, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
+    {"option_index": 2, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
+    {"option_index": 3, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"}
+   ],
+   "issues": [],
+   "claim_evidence": [
+     {"claim": "핵심 법적 주장, 예외 사항과 단서", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유와 법적 주체"}
+     `,
 
   correction: (quiz, article, errorReason) => `
 당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 원문 근거 및 추론 감사에서 문제가 발견되었습니다. 
