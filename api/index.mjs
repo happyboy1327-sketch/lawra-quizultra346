@@ -1632,37 +1632,74 @@ const QuizService = {
       return (longer.length - costs[s2.length]) / longer.length;
     };
 
-    function detectExplanationAnswerMismatch(quiz) {
-      const answerText = cleanText(quiz.answer);
-      const expText = cleanText(quiz.explanation_answer);
+  function detectExplanationAnswerMismatch(quiz) {
+  const answerText = cleanText(quiz.answer);
+  const expText = cleanText(quiz.explanation_answer);
 
-      if (!answerText || !expText) return false;
-      if (answerText === expText) return false;
+  if (!answerText || !expText) return false;
+  if (answerText === expText) return false;
 
-      const sim = getSimilarity(answerText, expText);
-      if (sim < 0.85) {
+  // [1단계] 전체 유사도 검사
+  const sim = getSimilarity(answerText, expText);
+  if (sim < 0.85) {
+    return {
+      mismatch: true,
+      reason: `answer와 explanation_answer 불일치 (유사도: ${sim.toFixed(2)})`,
+    };
+  }
+
+  // 실제 정답 보기 인덱스 확보
+  const correctIndex = (quiz.options || []).findIndex((o) => o.is_correct === true);
+  if (correctIndex === -1) return false; // 정답 보기가 없으면 비교 불가하므로 통과
+
+  // [2단계] 마지막 세 단어 부호행렬식 검토 (3단어 미만 시 기존 보기 비교)
+  const correctText = cleanText(quiz.options[correctIndex].text);
+
+  try {
+    const getLastThreeWords = (text) => {
+      return text.trim().split(/\s+/).slice(-3);
+    };
+
+    const corrWords = getLastThreeWords(correctText);
+    const ansWords = getLastThreeWords(answerText);
+    const expWords = getLastThreeWords(expText);
+
+    // [조건] 3개 단어가 모두 확보되었을 때만 행렬 검사 진행
+    if (corrWords.length === 3 && ansWords.length === 3 && expWords.length === 3) {
+      
+      // 정답(Answer)과 해설(Exp)의 각 단어별 일치 여부(부호) 배열 생성
+      const answerMatrix = ansWords.map((word, idx) => word === corrWords[idx]);
+      const expMatrix = expWords.map((word, idx) => word === corrWords[idx]);
+
+      // 두 부호 행렬이 완전히 일치하는지 비교 (하나라도 다르면 오류)
+      const isMatrixEqual = answerMatrix.every((val, idx) => val === expMatrix[idx]);
+
+      if (!isMatrixEqual) {
         return {
           mismatch: true,
-          reason: `answer와 explanation_answer 불일치 (유사도: ${sim.toFixed(2)})`,
+          reason: `문장 끝 세 단어의 서술 구조 및 진위 불일치 감지 (정답: [${ansWords.join(', ')}], 해설: [${expWords.join(', ')}])`,
         };
       }
+    } 
+    // [Else] 단어 수가 부족하면 기존의 전체 문장 진위 비교 수행
+    else {
+      const answerMatchesCorrect = correctText === answerText;
+      const expMatchesCorrect = correctText === expText;
 
-      const correctIndex = (quiz.options || []).findIndex((o) => o.is_correct === true);
-      if (correctIndex !== -1) {
-        const correctText = cleanText(quiz.options[correctIndex].text);
-        const answerMatchesCorrect = correctText === answerText;
-        const expMatchesCorrect = correctText === expText;
-
-        if (answerMatchesCorrect !== expMatchesCorrect) {
-          return {
-            mismatch: true,
-            reason: "answer와 explanation_answer가 정답 보기와 서로 다른 진위를 가짐",
-          };
-        }
+      if (answerMatchesCorrect !== expMatchesCorrect) {
+        return {
+          mismatch: true,
+          reason: "answer와 explanation_answer가 정답 보기와 서로 다른 진위를 가짐",
+        };
       }
-
-      return false;
     }
+  } catch (e) {
+    console.error("검사 중 에러 발생:", e);
+    return false;
+  }
+
+  return false;
+}
 
     const mismatch = detectExplanationAnswerMismatch(quiz);
     if (mismatch?.mismatch) {
