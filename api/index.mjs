@@ -1561,7 +1561,7 @@ const QuizService = {
   },
 
 
-  validateRequiredFields(quiz) {
+    validateRequiredFields(quiz) {
     if (!quiz || typeof quiz !== "object" || Array.isArray(quiz)) {
       return { valid: false, reason: "퀴즈 응답이 객체가 아님" };
     }
@@ -1582,15 +1582,17 @@ const QuizService = {
     if (quiz.options.some((o) => !o || typeof o.text !== "string" || !o.text.trim())) {
       return { valid: false, reason: "보기 중 텍스트가 비어 있거나 문자열이 아닌 항목이 있음" };
     }
-    // 보기 하나에 번호나 다른 보기까지 섞여 들어가는 구조적 문장 오류를 차단한다.
+
     const optionNumberPrefix = quiz.options.findIndex((o) => /^\s*[1-4]\s*[.)、:]\s+/.test(o.text));
     if (optionNumberPrefix !== -1) {
       return { valid: false, reason: `보기 ${optionNumberPrefix + 1}번 텍스트에 불필요한 보기 번호가 포함됨` };
     }
+
     const joinedOption = quiz.options.findIndex((o) => /(?:^|\s)[1-4]\s*[.)、:]\s+.{4,}\s+[1-4]\s*[.)、:]\s+/.test(o.text));
     if (joinedOption !== -1) {
       return { valid: false, reason: `보기 ${joinedOption + 1}번에 두 개 이상의 보기가 이어 붙어 있음` };
     }
+
     const correct = quiz.options.filter((o) => o.is_correct === true);
     if (correct.length !== 1) {
       return { valid: false, reason: `정답 표시는 정확히 하나여야 함 (현재 ${correct.length}개)` };
@@ -1598,11 +1600,17 @@ const QuizService = {
     if (correct[0].text.trim() !== quiz.answer.trim()) {
       return { valid: false, reason: "answer와 is_correct=true인 보기 텍스트가 불일치" };
     }
-    const correctOptionText = correct[0].text.trim();
-const answerText = quiz.answer.trim();
+
+    const cleanText = (s) =>
+      String(s ?? "")
+        .replace(/[\s`*._,<>!?()[\]]/g, "")
+        .trim()
+        .toLowerCase();
+
     const getSimilarity = (s1, s2) => {
       const longer = s1.length > s2.length ? s1 : s2;
-      if (longer.length === 0) return 1.0;
+      if (!longer.length) return 1.0;
+
       const costs = [];
       for (let i = 0; i <= s1.length; i++) {
         let lastValue = i;
@@ -1623,27 +1631,72 @@ const answerText = quiz.answer.trim();
       return (longer.length - costs[s2.length]) / longer.length;
     };
 
-// 두 문장의 공백과 특수문자, 볼드체 기호를 제거하고 순수 글자 유사도 측정
-const cleanStrForSim = (s) => String(s || "").replace(/[\s`*._,<>!?()[\]]/g, "").trim();
-const simAnswerAndOpt = getSimilarity(cleanStrForSim(correctOptionText), cleanStrForSim(answerText));
+    function detectExplanationAnswerMismatch(quiz) {
+      const answerText = cleanText(quiz.answer);
+      const expText = cleanText(quiz.explanation_answer);
 
-if (simAnswerAndOpt < 0.8) { // 85% 이상 일치하면 문장 핵심 논리가 같다고 판정
-  return { valid: false, reason: `answer와 is_correct=true인 보기 텍스트의 유사도가 너무 낮음 (유사도: ${simAnswerAndOpt.toFixed(2)})` };
-}
+      if (!answerText || !expText) return false;
+      if (answerText === expText) return false;
 
-// 2. [문제의 범인] explanation_answer와 answer 비교 완화
-if (quiz.explanation_answer != null && String(quiz.explanation_answer).trim()) {
-  const expAnswerText = String(quiz.explanation_answer).trim();
-  const simAnsAndExp = getSimilarity(cleanStrForSim(answerText), cleanStrForSim(expAnswerText));
-  
-  if (simAnsAndExp < 0.85) { // 의미와 핵심 키워드가 일치하면 통과
-    return { valid: false, reason: `explanation_answer와 answer의 유사도가 너무 낮음 (유사도: ${simAnsAndExp.toFixed(2)})` };
-  }
-}
+      const sim = getSimilarity(answerText, expText);
+      if (sim < 0.85) {
+        return {
+          mismatch: true,
+          reason: `answer와 explanation_answer 불일치 (유사도: ${sim.toFixed(2)})`,
+        };
+      }
+
+      const correctIndex = (quiz.options || []).findIndex((o) => o.is_correct === true);
+      if (correctIndex !== -1) {
+        const correctText = cleanText(quiz.options[correctIndex].text);
+        const answerMatchesCorrect = correctText === answerText;
+        const expMatchesCorrect = correctText === expText;
+
+        if (answerMatchesCorrect !== expMatchesCorrect) {
+          return {
+            mismatch: true,
+            reason: "answer와 explanation_answer가 정답 보기와 서로 다른 진위를 가짐",
+          };
+        }
+      }
+
+      return false;
+    }
+
+    const mismatch = detectExplanationAnswerMismatch(quiz);
+    if (mismatch?.mismatch) {
+      return { valid: false, reason: mismatch.reason };
+    }
+
+    const correctOptionText = correct[0].text.trim();
+    const answerText = quiz.answer.trim();
+
+    const cleanStrForSim = (s) =>
+      String(s || "").replace(/[\s`*._,<>!?()[\]]/g, "").trim();
+
+    const simAnswerAndOpt = getSimilarity(cleanStrForSim(correctOptionText), cleanStrForSim(answerText));
+    if (simAnswerAndOpt < 0.85) {
+      return {
+        valid: false,
+        reason: `answer와 is_correct=true인 보기 텍스트의 유사도가 너무 낮음 (유사도: ${simAnswerAndOpt.toFixed(2)})`,
+      };
+    }
+
+    if (quiz.explanation_answer != null && String(quiz.explanation_answer).trim()) {
+      const expAnswerText = String(quiz.explanation_answer).trim();
+      const simAnsAndExp = getSimilarity(cleanStrForSim(answerText), cleanStrForSim(expAnswerText));
+
+      if (simAnsAndExp < 0.85) {
+        return {
+          valid: false,
+          reason: `explanation_answer와 answer의 유사도가 너무 낮음 (유사도: ${simAnsAndExp.toFixed(2)})`,
+        };
+      }
+    }
+
     if (quiz.calcError) return { valid: false, reason: String(quiz.calcError) };
     return { valid: true };
   },
-
   async auditQuiz(quiz, article, refContent) {
     const sourceText = String(article?.content || "").trim();
     if (!sourceText) return { valid: false, reason: "감사에 필요한 출제 조문 원문이 없음" };
