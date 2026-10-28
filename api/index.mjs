@@ -1748,9 +1748,11 @@ const QuizService = {
       if (!result || typeof result !== "object" || Array.isArray(result)) {
         return { valid: false, reason: "근거 감사 응답이 JSON 객체가 아님" };
       }
-      const question_compatibility = String(result.question_compatibility || "").toLowerCase();
+      const question_compatibility =
+   result.question_compatibility === true ||
+   String(result.question_compatibility || "").toLowerCase() === "true";
       const verdict = String(result.verdict || "").toLowerCase();
-      const pass = result.pass === true && verdict === "supported" && question_compatibility === true &&
+      const pass = result.pass === true && verdict === "supported" && question_compatibility &&
         Array.isArray(result.issues) && result.issues.length === 0;
       
 const issues = Array.isArray(result.issues) ? result.issues : [];
