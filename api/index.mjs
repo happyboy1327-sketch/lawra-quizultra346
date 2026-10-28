@@ -1752,39 +1752,113 @@ const QuizService = {
       const verdict = String(result.verdict || "").toLowerCase();
       const pass = result.pass === true && verdict === "supported" && question_compatibility === true &&
         Array.isArray(result.issues) && result.issues.length === 0;
-      if (!pass) {
-        const issues = Array.isArray(result.issues) ? result.issues : [];
-        const missing = Array.isArray(result.missing_information) ? result.missing_information : [];
-        return {
-          valid: false,
-          reason: `근거 감사 실패 (${verdict || "판정 누락"}): ${[
-            ...issues.map((x) => typeof x === "string" ? x : JSON.stringify(x)),
-            ...missing.map((x) => `정보 부족: ${typeof x === "string" ? x : JSON.stringify(x)}`),
-            result.summary || "구체적인 감사 사유 없음"
-          ].join("; ")}`,
-          audit: result
-        };
-      }
-      const actualCorrectIndex = Array.isArray(quiz.options)
-    ? quiz.options.findIndex((o) => o?.is_correct === true)
-   : -1;
- const assessments = Array.isArray(result.option_assessments)
-   ? result.option_assessments
-   : [];
+      
+const issues = Array.isArray(result.issues) ? result.issues : [];
+const missing = Array.isArray(result.missing_information)
+  ? result.missing_information
+  : [];
 
- if (actualCorrectIndex < 0 || assessments.length !== 4 ||
-     assessments.some((x, i) => !x || Number(x.option_index) !== i ||
-       typeof x.matches_question !== "boolean" ||
-       !x.evidence_quote || !x.reasoning) ||
-     Number(result.selected_option_index) !== actualCorrectIndex ||
-     assessments.filter((x) => x.matches_question === true).length !== 1 ||
-     assessments.findIndex((x) => x.matches_question === true) !== actualCorrectIndex) {
-   return {
-     valid: false,
-     reason: "보기별 감사 결과가 실제 정답 표시와 일치하지 않거나, 유일한 정답을 검증하지 못함",
-     audit: result
-   };
- }
+if (!pass) {
+  return {
+    valid: false,
+    reason: `근거 감사 실패 (verdict=${verdict || "누락"}, pass=${JSON.stringify(result.pass)}): ${[
+      ...issues.map((x) =>
+        typeof x === "string" ? x : JSON.stringify(x)
+      ),
+      ...missing.map((x) =>
+        `정보 부족: ${typeof x === "string" ? x : JSON.stringify(x)}`
+      ),
+      result.summary || ""
+    ].filter(Boolean).join("; ") || "감사 모델이 판정 근거를 반환하지 않음"}`,
+    audit: result
+  };
+}
+
+// 실제 정답 보기는 정확히 하나여야 한다.
+const options = Array.isArray(quiz.options) ? quiz.options : [];
+const correctIndexes = options
+  .map((option, index) => option?.is_correct === true ? index : -1)
+  .filter(index => index !== -1);
+
+if (options.length !== 4 || correctIndexes.length !== 1) {
+  return {
+    valid: false,
+    reason: `퀴즈 구조 오류: 보기 ${options.length}개, 정답 표시 ${correctIndexes.length}개`,
+    audit: result
+  };
+}
+
+// 감사 모델의 보기별 평가가 실제 정답과 일치하는지 확인한다.
+const assessments = result.option_assessments;
+const correctIndex = correctIndexes[0];
+
+if (
+  !Array.isArray(assessments) ||
+  assessments.length !== options.length ||
+  assessments.some((item, index) =>
+    !item ||
+    Number(item.option_index) !== index ||
+    !["true", "false", true, false].includes(item.statement_truth) ||
+    typeof item.matches_question !== "boolean" ||
+    !item.evidence_quote ||
+    !item.reasoning
+  )
+) {
+  return {
+    valid: false,
+    reason: "보기별 감사 결과 누락 또는 형식 오류",
+    audit: result
+  };
+}
+
+const matchingIndexes = assessments
+  .filter(item => item.matches_question === true)
+  .map(item => Number(item.option_index));
+
+if (
+  Number(result.selected_option_index) !== correctIndex ||
+  matchingIndexes.length !== 1 ||
+  matchingIndexes[0] !== correctIndex
+) {
+  return {
+    valid: false,
+    reason: "감사 모델이 선택한 정답과 실제 is_correct 정답이 일치하지 않음",
+    audit: result
+  };
+}
+
+// 부정문·긍정문 질문은 보기의 진위와 정답 선택 방향도 대조한다.
+const polarity = String(result.question_polarity || "").toLowerCase();
+
+if (!["negative", "positive", "direct"].includes(polarity)) {
+  return {
+    valid: false,
+    reason: "감사 모델의 question_polarity 누락 또는 잘못된 값",
+    audit: result
+  };
+}
+
+if (polarity === "negative" || polarity === "positive") {
+  const expectedTruth = polarity === "negative" ? "false" : "true";
+
+  const truthValue = value =>
+    value === true || value === "true" ? "true" : "false";
+
+  if (
+    truthValue(assessments[correctIndex].statement_truth) !== expectedTruth ||
+    assessments.some((item, index) =>
+      item.matches_question &&
+      truthValue(item.statement_truth) !== expectedTruth
+    )
+  ) {
+    return {
+      valid: false,
+      reason: `질문 방향과 정답 보기의 진위 불일치 (polarity=${polarity})`,
+      audit: result
+    };
+  }
+}
+
       if (!Array.isArray(result.claim_evidence) || result.claim_evidence.length === 0 ||
           result.claim_evidence.some((x) => !x?.claim || !x?.evidence_quote || !x?.reasoning)) {
         return { valid: false, reason: "감사 응답에 주장-원문근거-추론 연결이 충분히 제시되지 않음", audit: result };
