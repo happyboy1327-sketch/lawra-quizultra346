@@ -1204,7 +1204,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 
 1. **정답의 일률성**
    - 질문 전제에 부합하는 정답은 오직 **1개**여야 하며, 나머지는 명백한 오답으로 구성하십시오.
-   - 정답이 1번인 경우, quiz.options[0].text의 문자열은 is_correct가 true인 text 문자열과 정확히 일치해야 합니다.
+   - 정답이 1번인 경우, quiz.options[0].text의 문자열은 is_correct가 true인 text 문자열과 정확히 일치해야 합니다. 그리고 복수 정답 우려가 없도록 정답은 질문 조건에 맞게 하나로 유일해야 한다.
 
 2. **해설의 Boolean (false) 판정 기준**
    다음 상황 중 하나라도 발생할 경우 해설/출력의 Boolean 데이터 값을 **false**로 처리하십시오:
@@ -1321,7 +1321,7 @@ ${refContent || "제공된 참조 조문 없음"}
 ${JSON.stringify(quiz, null, 2)}
 
 감사 절차:
-1. 질문의 사실관계와 선택지들이 서로 모순되지 않는지 확인한다.
+1. 질문의 사실관계와 선택지들이 서로 모순되지 않는지 확인한다. 질문을 제발 보세요 ㅅㅂ
 2. 정답 선택지의 각 법적 주장을 분리하고, 각 주장에 직접 근거가 되는 원문 구절을 연결한다.
 3. 인용 조문이 실제 제공 원문에 있는지, 그 조문이 주장된 법적 효과를 실제로 뒷받침하는지 확인한다. 조문이 존재한다는 사실만으로 그 해석이 맞다고 판정하지 않는다.
 4. 예외·단서·위임 규정·누적 요건이 있으면 각각의 적용 범위와 다른 법적 효과를 구분한다.
@@ -1355,9 +1355,9 @@ polarity가 negative이면 statement_truth=false인 보기만 matches_question=t
   "selected_option_index": 0,
   "option_assessments": [
     {"option_index": 0, "statement_truth": "true", "matches_question": true, "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
-    {"option_index": 1, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
-    {"option_index": 2, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
-    {"option_index": 3, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"}
+    {"option_index": 1, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
+    {"option_index": 2, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
+    {"option_index": 3, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"}
    ],
   "issues": [],
   "claim_evidence": [
