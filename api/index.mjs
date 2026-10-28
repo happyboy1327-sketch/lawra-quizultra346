@@ -1225,7 +1225,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
    - 해설 내 정답(explanation_answer)이 실제 법리와 일치하지 못하여 잘못 언급된 경우
    - 질문에 언급되지 않은 인물/상황이 선택지나 해설에 포함된 경우 (예: 질문에 없던 "C씨", "김씨" 등이 해설에 뜬금없이 나타난 경우 등)
    - 해설 본문의 결론(허용/불허)과 최종 정답 번호가 불일치하는 경우
-   - 논리기 허하고 모순된 경우
+   - 논리기 허하고 앞뒤 내용이 모순되어 사용자에게 큰 고통을 주는경우
    - 구체적인 사안에서 여러 조건이 있는 때에 시행령이 다중으로 적용되어야 하는데도 불구하고 하나만 적용하여 극심한 통증과 논리 및 법리 오류를 일으키는 경우
    
 
@@ -1338,6 +1338,7 @@ ${JSON.stringify(quiz, null, 2)}
 13. is_correct=true인 보기와 answer, explanation_answer가 동일한 보기 하나를 찾고, 그 보기가 유일하게 matches_question=true인지 확인한다. 
 선택된 정답이 질문의 논리 방향과 불일치하거나, matches_question=true인 보기가 0개 또는 2개 이상이면 pass=false다. is_correct 플래그나 기존 해설의 결론을 정답의 진실성에 대한 증거로 취급하지 마라. 
 polarity가 negative이면 statement_truth=false인 보기만 matches_question=true여야 한다. positive이면 statement_truth=true인 보기만 matches_question=true여야 한다. direct이면 문장 자체의 진위와 별도로 질문에 직접 답하는지 판단한다.
+14. 해설에 앞뒤 내용이 모순 관계를 가지는 경우, 반드시 exlanation_contradiction는 true여야 합니다.
 
 판정 기준:
 - supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다. 또한, 네 보기의 진위가 모두 타당하다고 검증됨.
@@ -1350,6 +1351,7 @@ polarity가 negative이면 statement_truth=false인 보기만 matches_question=t
   "verdict": "supported",
   "question_polarity": "positive",
   "question_compatibility" : true,
+  "exlanation_contradiction" : false, 
   "selected_option_index": 0,
   "option_assessments": [
     {"option_index": 0, "statement_truth": "true", "matches_question": true, "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
@@ -1749,12 +1751,13 @@ const QuizService = {
       if (!result || typeof result !== "object" || Array.isArray(result)) {
         return { valid: false, reason: "근거 감사 응답이 JSON 객체가 아님" };
       }
+      const exlanation_contradiction = result.exlanation_contradiction === false || String(result.exlanation_contradiction || "").toLowerCase() === "false";
       const question_compatibility =
    result.question_compatibility === true ||
    String(result.question_compatibility || "").toLowerCase() === "true";
       const verdict = String(result.verdict || "").toLowerCase();
-      const pass = result.pass === true && verdict === "supported" && question_compatibility &&
-        Array.isArray(result.issues) && result.issues.length === 0;
+      const pass = result.pass === true && verdict === "supported" && question_compatibility && 
+        exlanation_contradiction && Array.isArray(result.issues) && result.issues.length === 0;
       
 const issues = Array.isArray(result.issues) ? result.issues : [];
 const missing = Array.isArray(result.missing_information)
