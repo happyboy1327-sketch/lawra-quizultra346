@@ -303,12 +303,12 @@ const Utils = {
 
   // 해설 내 보기 번호 참조("2번", "②번", "보기 3")를 셔플된 순서에 맞게 치환
   remapOptionRefs: (text, noMap) => {
-    const CIRCLED = ["①", "②", "③", "④"];
+    const CIRCLED = ["①", "②", "③"];
     const map = (n) => noMap.get(n) ?? n;
     return text
-      .replace(/(?<!\d)([1-4])(\s*번)/g, (_, n, tail) => `${map(Number(n))}${tail}`)
-      .replace(/([①②③④])(\s*번)/g, (_, c, tail) => `${CIRCLED[map(CIRCLED.indexOf(c) + 1) - 1]}${tail}`)
-      .replace(/((?:보기|선택지)\s*)([1-4])(?!\d|\s*번|\s*번의)/g, (_, head, n) => `${head}${map(Number(n))}`);
+      .replace(/(?<!\d)([1-3])(\s*번)/g, (_, n, tail) => `${map(Number(n))}${tail}`)
+      .replace(/([①②③])(\s*번)/g, (_, c, tail) => `${CIRCLED[map(CIRCLED.indexOf(c) + 1) - 1]}${tail}`)
+      .replace(/((?:보기|선택지)\s*)([1-3])(?!\d|\s*번|\s*번의)/g, (_, head, n) => `${head}${map(Number(n))}`);
   },
   
   extractDate: function (text) {
