@@ -1326,12 +1326,12 @@ ${JSON.stringify(quiz, null, 2)}
 4. 예외·단서·위임 규정·누적 요건이 있으면 각각의 적용 범위와 다른 법적 효과를 구분한다.
 ★ [중요 - 부정문 출제 가이드] 만약 질문이 "틀린 것", "위반되는 행위", "올바르지 않은 것"을 묻는 형식이라면, 정답지(is_correct: true인 선택지)는 당연히 법령 원문과 상충되거나 틀린 사실을 서술해야 정상입니다. 그러하기 때문에 틀린 것을 묻고, 정답지(is_correct: true인 선택지)에 틀린 사실이 들어가있으면 'supported'로 판정하십시오.
 5. 원문에 없는 사실이나 요건이 필요한 경우, 충족되었다고 추정하지 말고 insufficient로 판정한다.
-6. 질문, 정답 보기, answer, explanation_answer, explanation.string의 결론이 일치하는지 확인한다.
+6. 질문, 정답 보기, answer, explanation_answer, explanation.string의 결론이 일치하는지 확인한다. 질문 속 법령명 및 조항과 해설내 법령명 및 조항이 불일치하면 question_compatibility는 false이며, verdict는 unsupported이다.
 7. 날짜·기간·금액·비율 등 계산은 제공된 사실과 계산식만으로 검증한다. 검증 불가능하면 unsupported 또는 insufficient로 판정한다.
 8. 판례를 원용했다면 제공된 근거에 판례가 없다는 점을 명시하고, 원문에 있는 것처럼 취급하지 않는다.
 9. 한국어 교정자로서 질문·보기·정답·해설의 문법, 조사와 어미, 주어·서술어 호응, 자연스러운 법률 용어, 문장 간 논리 연결, 불필요한 반복을 별도로 검사한다.
 10. 질문에 정답을 사실상 미리 알려주는 문장을 넣고 다시 같은 내용을 묻거나, 법률 용어를 잘못 조합하거나, 원문이 뒷받침하지 않는 추상적 평가를 덧붙이거나, 보기가 한 줄에 이어 붙은 형태로 생성되면 반드시 issues에 구체적으로 적고 pass=false로 판정한다.
-11. 각 보기 텍스트는 보기 하나의 문장만 담아야 한다. 보기 텍스트 안에 번호를 붙이거나 두 개 이상의 보기를 이어 쓰면 안 된다.
+11. ***option_assessments 작성 필수***: 각 보기 텍스트는 보기 하나의 문장만 담아야 한다. 보기 텍스트 안에 번호를 붙이거나 두 개 이상의 보기를 이어 쓰면 안 된다.
 12. 질문이 요구하는 논리 방향을 먼저 분류한다. question_polarity는 "negative", "positive", "direct" 중 하나다. "옳지 않은 것", "틀린 것", "잘못된 것", "적절하지 않은 것", "해당하지 않는 것", "타당하지 않은 것"처럼 보기의 법률상 주장이 틀린 것을 고르는 질문은 negative다. 
 "옳은 것", "맞는 것", "타당한 것", "적절한 것"처럼 보기의 법률상 주장이 맞는 것을 고르는 질문은 positive다. "어떤 행위가 금지되는가", "무엇을 할 수 없는가", "어떤 행위가 위반인가"처럼 행위나 법적 효과 자체를 직접 묻는 질문은 direct다. 질문이 모호하거나 양방향으로 해석되면 pass=false다.
 13. is_correct=true인 보기와 answer, explanation_answer가 동일한 보기 하나를 찾고, 그 보기가 유일하게 matches_question=true인지 확인한다. 
@@ -1345,9 +1345,10 @@ polarity가 negative이면 statement_truth=false인 보기만 matches_question=t
 
 반드시 JSON만 출력한다. verdict가 supported가 아니거나 issues가 하나라도 있으면 pass=false다. 아래 필드를 모두 포함한다.
  {
-   "pass": true,
-   "verdict": "supported",
-   "question_polarity": "positive",
+  "pass": true,
+  "verdict": "supported",
+  "question_polarity": "positive",
+  "question_compatibility" : true,
   "selected_option_index": 0,
   "option_assessments": [
     {"option_index": 0, "statement_truth": "true", "matches_question": true, "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
@@ -1355,10 +1356,11 @@ polarity가 negative이면 statement_truth=false인 보기만 matches_question=t
     {"option_index": 2, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
     {"option_index": 3, "statement_truth": "false", "matches_question": false, "evidence_quote": "원문 근거", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"}
    ],
-   "issues": [],
-   "claim_evidence": [
+  "issues": [],
+  "claim_evidence": [
      {"claim": "핵심 법적 주장, 예외 사항과 단서", "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "원문이 주장을 뒷받침하는 이유와 법적 주체"}
-     `,
+     ]
+  }`,
 
   correction: (quiz, article, errorReason) => `
 당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 원문 근거 및 추론 감사에서 문제가 발견되었습니다. 
@@ -1762,6 +1764,26 @@ const QuizService = {
           audit: result
         };
       }
+      const actualCorrectIndex = Array.isArray(quiz.options)
+    ? quiz.options.findIndex((o) => o?.is_correct === true)
+   : -1;
+ const assessments = Array.isArray(result.option_assessments)
+   ? result.option_assessments
+   : [];
+
+ if (actualCorrectIndex < 0 || assessments.length !== 4 ||
+     assessments.some((x, i) => !x || Number(x.option_index) !== i ||
+       typeof x.matches_question !== "boolean" ||
+       !x.evidence_quote || !x.reasoning) ||
+     Number(result.selected_option_index) !== actualCorrectIndex ||
+     assessments.filter((x) => x.matches_question === true).length !== 1 ||
+     assessments.findIndex((x) => x.matches_question === true) !== actualCorrectIndex) {
+   return {
+     valid: false,
+     reason: "보기별 감사 결과가 실제 정답 표시와 일치하지 않거나, 유일한 정답을 검증하지 못함",
+     audit: result
+   };
+ }
       if (!Array.isArray(result.claim_evidence) || result.claim_evidence.length === 0 ||
           result.claim_evidence.some((x) => !x?.claim || !x?.evidence_quote || !x?.reasoning)) {
         return { valid: false, reason: "감사 응답에 주장-원문근거-추론 연결이 충분히 제시되지 않음", audit: result };
