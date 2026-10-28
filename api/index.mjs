@@ -1130,10 +1130,10 @@ const LawService = {
 // ============================================================================
 
 const randomOptionsTemplate = () => {
-  const pos = Math.floor(Math.random() * 4);
+  const pos = Math.floor(Math.random() * 3);
   const options = [];
   
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     options.push({
       text: i === pos ? "[정답 내용이면서 질문의 전제 및 진위에 부합하며 질문 내에 언급된 인물의 사실 및 사항.]" : "[오답 내용이면서 질문의 전제 및 진위에 부합하지 않고 질문 내에 언급된 인물의 사실 및 사항.]",
       is_correct: i === pos
@@ -1356,8 +1356,7 @@ polarity가 negative이면 statement_truth=false인 보기만 matches_question=t
   "option_assessments": [
     {"option_index": 0, "statement_truth": "true", "matches_question": true, "evidence_quote": "원문에서 직접 뒷받침하는 짧은 인용", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
     {"option_index": 1, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
-    {"option_index": 2, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"},
-    {"option_index": 3, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"}
+    {"option_index": 2, "statement_truth": "false", "matches_question": false, "evidence_quote": "질문이 긍정이면 원문에 없거나 다르다는 근거. 부정이면 원문에 있다는 근거.", "reasoning": "해당 보기의 진위와 질문 방향을 대조한 이유"}
    ],
   "issues": [],
   "claim_evidence": [
@@ -1582,19 +1581,19 @@ const QuizService = {
     if (quiz.explanation.Boolean !== true) {
       return { valid: false, reason: "explanation.Boolean이 true가 아님" };
     }
-    if (!Array.isArray(quiz.options) || quiz.options.length !== 4) {
-      return { valid: false, reason: `보기는 정확히 4개여야 함 (현재 ${quiz.options?.length ?? 0}개)` };
+    if (!Array.isArray(quiz.options) || quiz.options.length !== 3) {
+      return { valid: false, reason: `보기는 정확히 3개여야 함 (현재 ${quiz.options?.length ?? 0}개)` };
     }
     if (quiz.options.some((o) => !o || typeof o.text !== "string" || !o.text.trim())) {
       return { valid: false, reason: "보기 중 텍스트가 비어 있거나 문자열이 아닌 항목이 있음" };
     }
 
-    const optionNumberPrefix = quiz.options.findIndex((o) => /^\s*[1-4]\s*[.)、:]\s+/.test(o.text));
+    const optionNumberPrefix = quiz.options.findIndex((o) => /^\s*[1-3]\s*[.)、:]\s+/.test(o.text));
     if (optionNumberPrefix !== -1) {
       return { valid: false, reason: `보기 ${optionNumberPrefix + 1}번 텍스트에 불필요한 보기 번호가 포함됨` };
     }
 
-    const joinedOption = quiz.options.findIndex((o) => /(?:^|\s)[1-4]\s*[.)、:]\s+.{4,}\s+[1-4]\s*[.)、:]\s+/.test(o.text));
+    const joinedOption = quiz.options.findIndex((o) => /(?:^|\s)[1-3]\s*[.)、:]\s+.{4,}\s+[1-4]\s*[.)、:]\s+/.test(o.text));
     if (joinedOption !== -1) {
       return { valid: false, reason: `보기 ${joinedOption + 1}번에 두 개 이상의 보기가 이어 붙어 있음` };
     }
@@ -1786,7 +1785,7 @@ const correctIndexes = options
   .map((option, index) => option?.is_correct === true ? index : -1)
   .filter(index => index !== -1);
 
-if (options.length !== 4 || correctIndexes.length !== 1) {
+if (options.length !== 3 || correctIndexes.length !== 1) {
   return {
     valid: false,
     reason: `퀴즈 구조 오류: 보기 ${options.length}개, 정답 표시 ${correctIndexes.length}개`,
