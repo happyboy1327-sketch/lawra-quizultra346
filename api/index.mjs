@@ -1335,9 +1335,9 @@ ${JSON.stringify(quiz, null, 2)}
 11. ***option_assessments 작성 필수***: 각 보기 텍스트는 보기 하나의 문장만 담아야 한다. 보기 텍스트 안에 번호를 붙이거나 두 개 이상의 보기를 이어 쓰면 안 된다.
 12. 질문이 요구하는 논리 방향을 먼저 분류한다. question_polarity는 "negative", "positive", "direct" 중 하나다. "옳지 않은 것", "틀린 것", "잘못된 것", "적절하지 않은 것", "해당하지 않는 것", "타당하지 않은 것"처럼 보기의 법률상 주장이 틀린 것을 고르는 질문은 negative다. 
 "옳은 것", "맞는 것", "타당한 것", "적절한 것"처럼 보기의 법률상 주장이 맞는 것을 고르는 질문은 positive다. "어떤 행위가 금지되는가", "무엇을 할 수 없는가", "어떤 행위가 위반인가"처럼 행위나 법적 효과 자체를 직접 묻는 질문은 direct다. 질문이 모호하거나 양방향으로 해석되면 pass=false다.
-13. is_correct=true인 보기와 answer, explanation_answer가 동일한 보기 하나를 찾고, 그 보기가 유일하게 matches_question=true인지 확인한다. 
+13. ***is_correct=true인 보기와 answer, explanation_answer가 동일한 보기 하나를 찾고, 그 보기가 유일하게 matches_question=true인지 확인한다. 
 선택된 정답이 질문의 논리 방향과 불일치하거나, matches_question=true인 보기가 0개 또는 2개 이상이면 pass=false다. is_correct 플래그나 기존 해설의 결론을 정답의 진실성에 대한 증거로 취급하지 마라. 
-polarity가 negative이면 statement_truth=false인 보기만 matches_question=true여야 한다. positive이면 statement_truth=true인 보기만 matches_question=true여야 한다. direct이면 문장 자체의 진위와 별도로 질문에 직접 답하는지 판단한다.
+polarity가 negative이면 statement_truth=false인 보기만 matches_question=true여야 한다. positive이면 statement_truth=true인 보기만 matches_question=true여야 한다. direct이면 문장 자체의 진위와 별도로 질문에 직접 답하는지 판단한다.***
 14. 해설에 앞뒤 내용이 모순 관계를 가지는 경우, 반드시 exlanation_contradiction는 true여야 합니다.
 
 판정 기준:
