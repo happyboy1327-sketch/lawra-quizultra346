@@ -1749,7 +1749,7 @@ const QuizService = {
         return { valid: false, reason: "근거 감사 응답이 JSON 객체가 아님" };
       }
       const verdict = String(result.verdict || "").toLowerCase();
-      const pass = result.pass === true && verdict === "supported" &&
+      const pass = result.pass === true && verdict === "supported" && question_compatibility === true &&
         Array.isArray(result.issues) && result.issues.length === 0;
       if (!pass) {
         const issues = Array.isArray(result.issues) ? result.issues : [];
