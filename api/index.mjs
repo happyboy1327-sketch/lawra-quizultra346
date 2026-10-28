@@ -286,7 +286,7 @@ const Utils = {
   },
 
   normalizeLawNotation: function (text) {
-    if (typeof text !== "string") return text;
+    text = String(text ?? "");
     return text
       .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*호\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
       .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
