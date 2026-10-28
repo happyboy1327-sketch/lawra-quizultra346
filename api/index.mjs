@@ -1748,6 +1748,7 @@ const QuizService = {
       if (!result || typeof result !== "object" || Array.isArray(result)) {
         return { valid: false, reason: "근거 감사 응답이 JSON 객체가 아님" };
       }
+      const question_compatibility = String(result.question_compatibility || "").toLowerCase();
       const verdict = String(result.verdict || "").toLowerCase();
       const pass = result.pass === true && verdict === "supported" && question_compatibility === true &&
         Array.isArray(result.issues) && result.issues.length === 0;
