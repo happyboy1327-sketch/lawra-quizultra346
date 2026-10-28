@@ -1646,7 +1646,7 @@ const QuizService = {
 
   // [1단계] 전체 유사도 검사
   const sim = getSimilarity(answerText, expText);
-  if (sim < 0.85) {
+  if (sim < 0.83) {
     return {
       mismatch: true,
       reason: `answer와 explanation_answer 불일치 (유사도: ${sim.toFixed(2)})`,
@@ -1740,6 +1740,7 @@ const QuizService = {
     if (quiz.calcError) return { valid: false, reason: String(quiz.calcError) };
     return { valid: true };
   },
+  
   async auditQuiz(quiz, article, refContent) {
     const sourceText = String(article?.content || "").trim();
     if (!sourceText) return { valid: false, reason: "감사에 필요한 출제 조문 원문이 없음" };
