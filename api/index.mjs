@@ -339,11 +339,11 @@ const Utils = {
       if (rawExpl && typeof rawExpl === "object" && !Array.isArray(rawExpl)) {
         const boolVal = rawExpl.Boolean ?? rawExpl.boolean ?? false;
         return {
-          string: fixGrammarAndTimeline(normalizeLawNotation(this.normalizeText(rawExpl.string ?? rawExpl.text ?? ""))),
+          string: fixGrammarAndTimeline(this.normalizeLawNotation(this.normalizeText(rawExpl.string ?? rawExpl.text ?? ""))),
           Boolean: typeof boolVal === "boolean" ? boolVal : String(boolVal).toLowerCase() === "true"
         };
       }
-      return { string: fixGrammarAndTimeline(normalizeLawNotation(this.normalizeText(rawExpl))) , Boolean: true };
+      return { string: fixGrammarAndTimeline(this.normalizeLawNotation(this.normalizeText(rawExpl))) , Boolean: true };
     })();
 
     const rawOptions = (Array.isArray(quiz.options) ? quiz.options : []).map(opt => ({
