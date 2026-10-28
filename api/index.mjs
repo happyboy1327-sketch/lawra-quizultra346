@@ -1484,7 +1484,7 @@ const QuizService = {
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
         top_p: 0.0,
-        reasoning_effort: "medium",
+        reasoning_effort: "high",
       };  
 
       // 💡 [핵심 ㅅㅂ 수정] 헌법이 '아닐 때만' stop 토큰 배열을 주입하고, 헌법이면 stop 옵션 자체를 아예 넣지 않음
