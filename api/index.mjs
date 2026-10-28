@@ -288,9 +288,9 @@ const Utils = {
   normalizeLawNotation: function (text) {
     text = String(text ?? "");
     return text
-      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*호\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
+      .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*항\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
       .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
-      .replace(/([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*(?:항)?\s*(\d+)\.?/g, (_, ch, h) => `제${circled(ch)}항제${h}호`)
+      .replace(/제\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*(?:항)?\s*(\d+)\.?/g, (_, ch, h) => `제${circled(ch)}항제${h}호`)
       .replace(/제\s*(\d+)\s*조\s*제\s*(\d+)\s*항\s*(\d+)\.?/g, '제$1조제$2항제$3호')
       .replace(/제\s*(\d+)\s*조\s*(\d+)항\s*(\d+)\.?/g, '제$1조제$2항제$3호')
       .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*호/g, (_, n, ch) => `제${n}조제${circled(ch)}항`)
