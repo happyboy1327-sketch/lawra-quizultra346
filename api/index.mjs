@@ -848,7 +848,7 @@ const LawParser = {
       } else if (childKey === "목") {
         formattedNo = `${rawNo}목`;
       } else {
-        formattedNo = rawNo.endsWith(".") || rawNo.startsWith("제") ? rawNo : `${rawNo}.`;
+        formattedNo = "제" + rawNo.replace(/[^0-9]/g, "") + "호";
       }
 
       const line = rawContent ? `${indent}${formattedNo} ${rawContent}` : `${indent}${formattedNo}`;
@@ -1240,6 +1240,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 1. **조문 번호 언급 제한**
    - 인용 조문 번호는 착오 방지를 위해 해설 작성 시 **단 1회만 정확히 언급**하십시오.
    - 조문 원문에 항 번호가 없는 단일 조항일 경우 '제1항'이나 '①'을 임의로 붙이지 말고 조문명(예: A법 제N조의M)만 기재하십시오.
+   - ★조문 호수 엄수: 조문에 제1호, 제2호 등 여러 호가 나열된 경우, 각 호에 해당하는 대상과 연령 요건을 엇갈리게 매칭하거나 혼동하여 출제하지 마십시오.
 
 2. **법령명 및 하위법령 표기 정밀화**
    - "이 법/같은 법" = 해당 법률, "영/대통령령" = 시행령, "규칙/부령" = 시행규칙으로 엄격히 구분하십시오.
