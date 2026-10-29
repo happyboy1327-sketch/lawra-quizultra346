@@ -499,7 +499,7 @@ function lawSlot(fn) {
   return run;
 }
 
-async function lawGet(url, params, timeout = 13000, tries = 3) {
+async function lawGet(url, params, timeout = 16000, tries = 3) {
   for (let i = 1; ; i++) {
     try {
       return (await lawSlot(() => axios.get(url, { params: { OC: OC_USER_ID, type: "JSON", ...params }, timeout }))).data;
@@ -580,13 +580,26 @@ const joCode = (num) => {
 async function getArticle(mst, num) {
   const jo = joCode(num);
   if (!jo) return null;
+
+  // 1차: 기존 단건 조회 시도
   try {
     const data = await lawGet(LAW_API_URL, { target: "law", MST: mst, JO: jo });
     const raw = data?.["법령"]?.["조문"]?.["조문단위"];
     const lawName = data?.["법령"]?.["기본정보"]?.["법령명_한글"] || "";
-    return (Array.isArray(raw) ? raw : [raw]).filter(Boolean)
+    const found = (Array.isArray(raw) ? raw : [raw]).filter(Boolean)
       .map((a) => LawParser.parseArticle(a, lawName))
-      .find((a) => a.num === num && !a.isDeleted) || null;
+      .find((a) => a.num === num && !a.isDeleted);
+    
+    if (found) return found;
+  } catch (err) {
+    // 404 등으로 단건 조회가 막힌 경우 아래 폴백으로 진입
+  }
+
+  // 2차 폴백: 단건 조회가 실패한 경우에만 해당 법령 캐시 맵에서 탐색
+  try {
+    const articleMap = await getLawArticleMap(mst);
+    const cached = articleMap.get(num);
+    return (cached && !cached.isDeleted) ? cached : null;
   } catch (err) {
     console.error(`조문 조회 실패 (MST ${mst} ${num}):`, err.message);
     return null;
