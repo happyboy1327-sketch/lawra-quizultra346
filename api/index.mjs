@@ -1980,10 +1980,13 @@ const refContent = article.referencedContent ?? "";
       console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
+      
+      console.log(`[슬롯 ${slotIndex}] 퀴즈 생성 종료 ㅅㅂ`);
       if (!quiz) {
         console.warn(`[슬롯 ${slotIndex}] 퀴즈 생성 실패`);
         continue;
       }
+      console.log(`[슬롯 ${slotIndex}] 검증 시작 ㅅㅂ`);
 
       const result = await this.runValidationPipeline(quiz, article, refContent);
       if (result.valid) {
