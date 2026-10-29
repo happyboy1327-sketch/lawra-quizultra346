@@ -495,7 +495,7 @@ const lawArticlesCache = new Map();
 let lawQueue = Promise.resolve();
 function lawSlot(fn) {
   const run = lawQueue.then(fn, fn);
-  lawQueue = run.then(() => Utils.sleep(200), () => Utils.sleep(200));
+  lawQueue = run.then(() => Utils.sleep(250), () => Utils.sleep(250));
   return run;
 }
 
@@ -514,7 +514,7 @@ async function getLawIdByName(lawName) {
   if (lawIdCache.has(lawName)) return lawIdCache.get(lawName);
 
   try {
-const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { target: "law", query: lawName }, 10000);
+const data = await lawGet("https://www.law.go.kr/DRF/lawSearch.do", { target: "law", query: lawName }, 16000);
     const lawList = data?.LawSearch?.law;
     if (!lawList) return null;
 
@@ -604,7 +604,7 @@ function getDelegatedMap(lawId) {
       const maxRetries = 3;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          const data = await lawGet(LAW_API_URL, { target: "lsDelegated", MST: lawId }, 40000, 1);
+          const data = await lawGet(LAW_API_URL, { target: "lsDelegated", MST: lawId }, 43000, 1);
           const map = new Map();
           for (const it of toArr(data?.lsDelegated?.["법령"]?.["위임조문정보"])) {
             const j = it["조정보"] || {};
@@ -1564,7 +1564,7 @@ const QuizService = {
       return Utils.normalizeQuiz(rawQuiz);
     } catch (err) {
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
-        await Utils.sleep(1200);
+        await Utils.sleep(1350);
         return this.generateQuiz(article, retriesLeft - 1);
       }
       console.error("Mistral 퀴즈 생성 API 오류:", err.message);
