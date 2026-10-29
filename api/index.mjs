@@ -1345,6 +1345,7 @@ ${JSON.stringify(quiz, null, 2)}
 선택된 정답이 질문의 논리 방향과 불일치하거나, matches_question=true인 보기가 0개 또는 2개 이상이면 pass=false다. is_correct 플래그나 기존 해설의 결론을 정답의 진실성에 대한 증거로 취급하지 마라. 
 polarity가 negative이면 statement_truth=false인 보기만 matches_question=true여야 한다. positive이면 statement_truth=true인 보기만 matches_question=true여야 한다. direct이면 문장 자체의 진위와 별도로 질문에 직접 답하는지 판단한다.***
 14. 해설에 앞뒤 내용이 모순 관계를 가지는 경우, 반드시 exlanation_contradiction는 true여야 합니다.
+15. ★호 번호 정합성 검사: 조문에 다수의 호가 존재하는 경우, 질문과 정답에서 요구하는 법적 주체와 요건이 원문의 해당 호와 정확히 일치하는지 확인하십시오. 호 번호나 주체가 뒤바뀐 경우 즉시 unsupported 및 pass=false로 판정하십시오.
 
 판정 기준:
 - supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다. 또한, 세 보기의 진위가 모두 타당하다고 검증됨.
