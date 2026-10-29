@@ -844,11 +844,11 @@ const LawParser = {
       
       let formattedNo = rawNo;
       if (childKey === "호" && parentHangNo) {
-        formattedNo = `제${parentHangNo}항 제${rawNo}호`;
+        formattedNo = `제${parentHangNo}항 제${rawNo.replace(/[^\d의]/g, "")}호`;
       } else if (childKey === "목") {
         formattedNo = `${rawNo}목`;
       } else {
-        formattedNo = "제" + rawNo.replace(/[^0-9]/g, "") + "호";
+        formattedNo = "제" + rawNo.replace(/[^\d의]/g, "") + "호";
       }
 
       const line = rawContent ? `${indent}${formattedNo} ${rawContent}` : `${indent}${formattedNo}`;
