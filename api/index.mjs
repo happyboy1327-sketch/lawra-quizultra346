@@ -1362,7 +1362,32 @@ function validateLawArticleCitations(quiz, article, refContent) {
       }
     }
   }
+  // 포괄적으로 적용된다고 인정한 조문 범위 안의 특정 조항을
+  // 해설 후반부에서 다시 적용 제외로 단정하는 자기모순을 차단한다.
+  const auditText = texts.join("\n");
+  const articleRanges = [...auditText.matchAll(
+    /제\s*(\d+)\s*조\s*부터\s*(?:제\s*)?(\d+)\s*조\s*까지/g
+  )];
 
+  for (const range of articleRanges) {
+    const start = Number(range[1]);
+    const end = Number(range[2]);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start > end || end - start > 300) continue;
+
+    for (let articleNo = start; articleNo <= end; articleNo++) {
+      const articlePattern = new RegExp(
+        `제\\s*${articleNo}\\s*조[^\\n.!?。]{0,180}(?:적용되지\\s*않|적용할\\s*수\\s*없|적용받지\\s*않|해당하지\\s*않|포함되지\\s*않)`,
+        "i"
+      );
+
+      if (articlePattern.test(auditText)) {
+        return {
+          valid: false,
+          reason: `조문 범위 내부 모순: 제${start}조부터 제${end}조까지 적용 대상으로 제시하면서 제${articleNo}조는 적용되지 않는다고 서술했습니다. 원문에 명시적인 예외가 있는지 다시 검증해야 합니다.`
+        };
+      }
+    }
+  }
   return { valid: true };
 }
 
