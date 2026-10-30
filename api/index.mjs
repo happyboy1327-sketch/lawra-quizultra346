@@ -256,6 +256,17 @@ const Utils = {
 
   normalizeLawNotation: function (text) {
     text = String(text ?? "");
+    if (currentNum) {
+      const matchNum = String(currentNum).match(/제(\d+)조(?:의(\d+))?/);
+      if (matchNum) {
+        const baseNum = parseInt(matchNum[1], 10);
+        text = text.replace(/전\s*(\d+)?\s*조/g, (m, n) => {
+          const offset = n ? parseInt(n, 10) : 1;
+          const targetNum = baseNum - offset;
+          return targetNum > 0 ? `제${targetNum}조` : m;
+        });
+      }
+    }
     return text
       .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*호\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
       .replace(/제\s*(\d+)\s*조\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*(\d+)\.?/g, (_, n, ch, h) => `제${n}조제${circled(ch)}항제${h}호`)
@@ -1066,7 +1077,7 @@ ${JSON.stringify(quiz, null, 2)}
 
   correction: (quiz, article, errorReason) => `
 당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 검토 과정에서 문제가 발견되었습니다. 아래 오류 사유를 반영하여 수정하십시오.
-상대 참조가 있었다면 선택지에는 반드시 원문 조문과 참조조문을 참고하여 전 n조를 실제 법령 조항번호로 수정하시오.
+상대 참조(전조, 전 n조 등)가 있었다면 선택지 및 문제, 해설에는 반드시 원문 조문(${article.num})과 참조조문을 참고하여 실제 법령 조항번호로 수정하시오.
 [원문 조문]
 ${article.content}
 ${article.referencedContent ? `\n[참조 조문]\n${article.referencedContent}` : ''}
@@ -1165,7 +1176,7 @@ const QuizService = {
       const quizString = JSON.stringify(rawQuiz);
       if (!isConstitution && quizString && quizString.includes("[IDK]")) return null;
 
-      return Utils.normalizeQuiz(rawQuiz);
+      return Utils.normalizeQuiz(rawQuiz, article.num);
     } catch (err) {
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
         await Utils.sleep(1350);
