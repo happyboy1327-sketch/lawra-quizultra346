@@ -1052,7 +1052,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 너는 생성된 법률 퀴즈의 근거와 추론을 감사하는 검토자다. 아래 제공된 원문 및 인용법령을 근거로 퀴즈의 핵심 주장과 결론이 실제 뒷받침되는지 검토하라.
 또한 법령에 없는 일반 사실이 포함되어 있다면 그 타당성을 검증하되, 일반 사실이 없으면 통과(Pass)시키라.
 
-특히 질문이 부정문("~가 아닌 것은?", "~에 해당하지 않는 것은?")인 경우, 정답 선택지(is_correct: true)의 statement_truth가 법령에 반하는 "false"이며 오답 선택지들의 statement_truth가 "true"인지 엄격히 검증하라.
+특히 질문이 부정문("~가 아닌 것은?", "~에 해당하지 않는 것은?")인 경우 question_polarity는 negative로 설정해야 하고, 정답 선택지(is_correct: true)의 statement_truth가 법령에 반하는 "false"이며 오답 선택지들의 statement_truth가 "true"인지 엄격히 검증하라.
 
 [출제 대상 법령]
 ${article.lawName} ${article.num}
