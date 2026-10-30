@@ -1512,14 +1512,19 @@ const QuizService = {
       if (!structure.valid) {
         lastReason = `구조 검증: ${structure.reason}`;
       } else {
-        const audit = await this.auditQuiz(quiz, article, refContent);
-        if (audit.valid) {
-          const plaintextPkg = assembleQuizPlaintext(article, refContent, quiz);
-          console.log(`[Plaintext 패키지 생성 완료 길이: ${plaintextPkg.length}자]`);
-          return { valid: true, reason: audit.reason, quiz, audit: audit.audit, plaintext: plaintextPkg };
-        }
-        lastReason = audit.reason;
-      }
+        const citationCheck = validateLawArticleCitations(quiz, article, refContent);
+
+ if (!citationCheck.valid) {
+   lastReason = `조문 번호 검증 실패: ${citationCheck.reason}`;
+ } else {
+   const audit = await this.auditQuiz(quiz, article, refContent);
+   if (audit.valid) {
+     const plaintextPkg = assembleQuizPlaintext(article, refContent, quiz);
+     console.log(`[Plaintext 패키지 생성 완료 길이: ${plaintextPkg.length}자]`);
+     return { valid: true, reason: audit.reason, quiz, audit: audit.audit, plaintext: plaintextPkg };
+   }
+   lastReason = audit.reason;
+ }
 
       if (pass === maxCorrections) break;
       const corrected = await this.fixQuiz(quiz, article, lastReason);
