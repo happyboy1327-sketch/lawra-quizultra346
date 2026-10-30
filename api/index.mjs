@@ -19,7 +19,7 @@ console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUN
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = 'ministral-8b-latest';
-const MODEL_TIER_FLAG = { modelChanged: false, tier: 'ministral-8b-latest', serverError: false };
+const MODEL_TIER_FLAG = { modelChanged: false, tier: 'ministral-8b-latest', serverError: true };
 const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
 const MISTRAL_MIN_INTERVAL_MS = 800;
 
@@ -254,7 +254,8 @@ const Utils = {
     return String(value);
   },
 
-  normalizeLawNotation: function (text) {
+  // 1번 위치: '전 n조' 상대 참조 변환 로직 반영 (currentNum 인자 추가)
+  normalizeLawNotation: function (text, currentNum) {
     text = String(text ?? "");
     if (currentNum) {
       const matchNum = String(currentNum).match(/제(\d+)조(?:의(\d+))?/);
@@ -297,7 +298,8 @@ const Utils = {
     return match ? match[0] : null;
   },
 
-  normalizeQuiz: function (quiz) {
+  // 2번 위치: normalizeQuiz에서 articleNum 인자를 받아 전달
+  normalizeQuiz: function (quiz, articleNum) {
     if (!quiz || typeof quiz !== "object") return null;
     quiz = applyCalc(quiz);
 
@@ -314,11 +316,11 @@ const Utils = {
       if (rawExpl && typeof rawExpl === "object" && !Array.isArray(rawExpl)) {
         const boolVal = rawExpl.Boolean ?? rawExpl.boolean ?? false;
         return {
-          string: fixGrammarAndTimeline(this.normalizeLawNotation(this.normalizeText(rawExpl.string ?? rawExpl.text ?? ""))),
+          string: fixGrammarAndTimeline(this.normalizeLawNotation(this.normalizeText(rawExpl.string ?? rawExpl.text ?? ""), articleNum)),
           Boolean: typeof boolVal === "boolean" ? boolVal : String(boolVal).toLowerCase() === "true"
         };
       }
-      return { string: fixGrammarAndTimeline(this.normalizeLawNotation(this.normalizeText(rawExpl))) , Boolean: true };
+      return { string: fixGrammarAndTimeline(this.normalizeLawNotation(this.normalizeText(rawExpl), articleNum)) , Boolean: true };
     })();
 
     const rawOptions = (Array.isArray(quiz.options) ? quiz.options : []).map(opt => ({
@@ -420,10 +422,10 @@ const Utils = {
       id: this.normalizeText(quiz.id),
       category: this.normalizeText(quiz.category),
       explanation,
-      question: fixGrammarAndTimeline(this.normalizeText(quiz.question)),
-      answer: targetIndex !== -1 ? rawOptions[targetIndex].text : fixGrammarAndTimeline(this.normalizeText(quiz.answer)),
+      question: fixGrammarAndTimeline(this.normalizeText(this.normalizeLawNotation(quiz.question, articleNum))),
+      answer: targetIndex !== -1 ? rawOptions[targetIndex].text : fixGrammarAndTimeline(this.normalizeText(this.normalizeLawNotation(quiz.answer, articleNum))),
       timer_sec: Number(quiz.timer_sec) || 15,
-      options: options.map(opt => ({ ...opt, text: fixGrammarAndTimeline(opt.text) })),
+      options: options.map(opt => ({ ...opt, text: fixGrammarAndTimeline(this.normalizeLawNotation(opt.text, articleNum)) })),
     };
     
     normalized.explanation.string = normalized.explanation.string
@@ -1074,6 +1076,7 @@ ${JSON.stringify(quiz, null, 2)}
   "claim_evidence": [{"claim": "주장", "evidence_quote": "근거", "reasoning": "추론"}]
   }`,
 
+  // 3번 위치: 정정 프롬프트 내 상대 참조 지침 강화 반영
   correction: (quiz, article, errorReason) => `
 당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 검토 과정에서 문제가 발견되었습니다. 아래 오류 사유를 반영하여 수정하십시오.
 상대 참조(전조, 전 n조 등)가 있었다면 선택지 및 문제, 해설에는 반드시 원문 조문(${article.num})과 참조조문을 참고하여 실제 법령 조항번호로 수정하시오.
@@ -1175,6 +1178,7 @@ const QuizService = {
       const quizString = JSON.stringify(rawQuiz);
       if (!isConstitution && quizString && quizString.includes("[IDK]")) return null;
 
+      // 2번 위치: 퀴즈 생성 후 정규화 과정에 현재 조문 번호(article.num) 전달
       return Utils.normalizeQuiz(rawQuiz, article.num);
     } catch (err) {
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
@@ -1219,7 +1223,7 @@ const QuizService = {
     try {
       const raw = await this.requestMistral(PROMPTS.correction(quiz, article, errorReason), "xhigh");
       if (!raw || raw.error === "[IDK]" || raw.error) return null;
-      return Utils.normalizeQuiz(raw);
+      return Utils.normalizeQuiz(raw, article.num);
     } catch (err) {
       return null;
     }
@@ -1237,7 +1241,6 @@ const QuizService = {
       } else {
         const audit = await this.auditQuiz(quiz, article, refContent);
         if (audit.valid) {
-          // 요구사항 1 반영: Plaintext 통합 패키지 생성 검증 로그 출력
           const plaintextPkg = assembleQuizPlaintext(article, refContent, quiz);
           console.log(`[Plaintext 패키지 생성 완료 길이: ${plaintextPkg.length}자]`);
           return { valid: true, reason: audit.reason, quiz, audit: audit.audit, plaintext: plaintextPkg };
