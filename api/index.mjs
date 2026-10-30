@@ -1066,6 +1066,7 @@ ${JSON.stringify(quiz, null, 2)}
 
   correction: (quiz, article, errorReason) => `
 당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 검토 과정에서 문제가 발견되었습니다. 아래 오류 사유를 반영하여 수정하십시오.
+상대 참조가 있었다면 선택지에는 반드시 원문 조문과 참조조문을 참고하여 전 n조를 실제 법령 조항번호로 수정하시오.
 [원문 조문]
 ${article.content}
 ${article.referencedContent ? `\n[참조 조문]\n${article.referencedContent}` : ''}
