@@ -1308,89 +1308,294 @@ ${JSON.stringify(quiz, null, 2)}
 `
 };
 
-function validateLawArticleCitations(quiz, article, refContent) {
-  const available = new Map();
-  const normalize = (value) => String(value ?? "").replace(/\s+/g, "");
+function normalizeLawCitationText(value) {
+  return String(value ?? "").replace(/\s+/g, "").replace(/[“”‘’]/g, "");
+}
 
-  const addSource = (lawName, articleNum) => {
-    const lawKey = normalize(lawName);
-    const articleKey = normalize(articleNum);
+function normalizeEvidenceText(value) {
+  return String(value ?? "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+}
+
+function getTextSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const longer = a.length >= b.length ? a : b;
+  const shorter = a.length >= b.length ? b : a;
+  if (!longer.length) return 1;
+  const maxDistance = Math.floor(longer.length * 0.1);
+  if (longer.length - shorter.length > maxDistance) return 0;
+
+  let previous = Array.from({ length: shorter.length + 1 }, (_, i) => i <= maxDistance ? i : Infinity);
+  for (let i = 1; i <= longer.length; i++) {
+    const current = Array(shorter.length + 1).fill(Infinity);
+    if (i <= maxDistance) current[0] = i;
+    const from = Math.max(1, i - maxDistance);
+    const to = Math.min(shorter.length, i + maxDistance);
+    let rowMin = Infinity;
+    for (let j = from; j <= to; j++) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (longer[i - 1] === shorter[j - 1] ? 0 : 1)
+      );
+      if (current[j] < rowMin) rowMin = current[j];
+    }
+    if (rowMin > maxDistance) return 0;
+    previous = current;
+  }
+  const distance = previous[shorter.length];
+  return distance <= maxDistance ? (longer.length - distance) / longer.length : 0;
+}
+
+// 긴 원문 전체와 비교하지 않고, 실제 조문 문장 단위에서 인용문과 가장 가까운 구간을 찾는다.
+function getBestEvidenceSimilarity(quote, source) {
+  const q = normalizeEvidenceText(quote);
+  if (!q || q.length < 5) return 0;
+  const normalizedSource = normalizeEvidenceText(source);
+  if (normalizedSource.includes(q)) return 1;
+
+  const segments = String(source ?? "")
+    .split(/[\r\n.!?。；;]+/)
+    .map(normalizeEvidenceText)
+    .filter(Boolean);
+  const candidates = [...segments];
+  for (let i = 0; i < segments.length - 1; i++) candidates.push(segments[i] + segments[i + 1]);
+
+  const anchorLength = Math.min(6, Math.max(4, Math.floor(q.length * 0.08)));
+  const anchorStep = Math.max(1, Math.floor(anchorLength / 2));
+  const maxDistance = Math.floor(q.length * 0.1);
+  let best = 0;
+
+  for (const candidate of candidates) {
+    if (candidate.includes(q)) return 1;
+    if (Math.abs(candidate.length - q.length) <= maxDistance) {
+      best = Math.max(best, getTextSimilarity(q, candidate));
+      if (best >= 0.9) return best;
+      continue;
+    }
+    if (candidate.length <= q.length) continue;
+
+    // 인용문 안의 일치하는 짧은 문자열을 기준으로 원문 내 비교 구간을 좁힌다.
+    for (let qIndex = 0; qIndex <= q.length - anchorLength; qIndex += anchorStep) {
+      const anchor = q.slice(qIndex, qIndex + anchorLength);
+      let sourceIndex = candidate.indexOf(anchor);
+      while (sourceIndex !== -1) {
+        const start = sourceIndex - qIndex;
+        if (start >= 0) {
+          const minLength = Math.max(1, q.length - maxDistance);
+          const maxLength = Math.min(candidate.length - start, q.length + maxDistance);
+          for (let length = minLength; length <= maxLength; length++) {
+            const score = getTextSimilarity(q, candidate.slice(start, start + length));
+            if (score > best) best = score;
+            if (best >= 0.9) return best;
+          }
+        }
+        sourceIndex = candidate.indexOf(anchor, sourceIndex + 1);
+      }
+    }
+  }
+  return best;
+}
+
+function buildLawSourceMap(article, refContent) {
+  const sources = new Map();
+  const add = (lawName, articleNum, content) => {
+    const lawKey = normalizeLawCitationText(lawName);
+    const articleKey = normalizeLawCitationText(articleNum);
     if (!lawKey || !/^제\d+조(?:의\d+)?$/.test(articleKey)) return;
-    if (!available.has(lawKey)) available.set(lawKey, new Set());
-    available.get(lawKey).add(articleKey);
+    if (!sources.has(lawKey)) sources.set(lawKey, new Map());
+    const articles = sources.get(lawKey);
+    const existing = articles.get(articleKey) || "";
+    const mergedLines = [...new Set(`${existing}\n${String(content ?? "")}`.split(/\r?\n/).filter(Boolean))];
+    articles.set(articleKey, mergedLines.join("\n"));
   };
 
-  // 출제 대상 조문
-  addSource(article?.lawName, article?.num);
+  add(article?.lawName, article?.num, article?.content);
+  const blocks = String(refContent ?? "").matchAll(
+    /^\[([^\]\r\n]+)\][ \t]*\r?\n([\s\S]*?)(?=^\[[^\]\r\n]+\][ \t]*$|(?![\s\S]))/gm
+  );
+  for (const block of blocks) {
+    const header = block[1].split("→").pop().trim();
+    const match = header.match(/^(.*?)(제\s*\d+\s*조(?:\s*의\s*\d+)?)$/);
+    if (match) add(match[1].trim(), match[2], block[2]);
+  }
+  return sources;
+}
 
-  // 실제 제공된 참조 조문
-  for (const match of String(refContent || "").matchAll(/\[([^\]\n]+)\]/g)) {
-    const header = match[1].split("→").pop().trim();
-    const parsed = header.match(/^(.*?)(제\s*\d+\s*조(?:\s*의\s*\d+)?)$/);
-    if (parsed) addSource(parsed[1].trim(), parsed[2]);
+function parseCitationSuffix(suffix) {
+  const compact = String(suffix ?? "").replace(/\s+/g, "");
+  const tokens = [];
+  const tokenRegex = /제(\d+)항|제(\d+)호|([가-하])목|([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])항/g;
+  let match;
+  let lastIndex = 0;
+  while ((match = tokenRegex.exec(compact))) {
+    if (match.index !== lastIndex) break;
+    if (match[1]) tokens.push({ type: "hang", value: Number(match[1]) });
+    else if (match[2]) tokens.push({ type: "ho", value: Number(match[2]) });
+    else if (match[3]) tokens.push({ type: "mok", value: match[3] });
+    else if (match[4]) tokens.push({ type: "hang", value: match[4].charCodeAt(0) - 0x2460 + 1 });
+    lastIndex = tokenRegex.lastIndex;
+  }
+  return { tokens, consumed: lastIndex, compact };
+}
+
+function validateCitationHierarchy(articleContent, citation) {
+  const tokens = citation.tokens;
+  if (!tokens.length) return { valid: true };
+
+  // 법령 인용의 계층 순서는 조 -> 항 -> 호 -> 목이어야 한다.
+  const order = { hang: 1, ho: 2, mok: 3 };
+  for (let i = 1; i < tokens.length; i++) {
+    if (order[tokens[i].type] <= order[tokens[i - 1].type]) {
+      return { valid: false, reason: "항·호·목의 인용 순서가 법령 구조와 다릅니다." };
+    }
+  }
+  if (tokens.filter(x => x.type === "hang").length > 1 ||
+      tokens.filter(x => x.type === "ho").length > 1 ||
+      tokens.filter(x => x.type === "mok").length > 1) {
+    return { valid: false, reason: "같은 단계의 항·호·목이 중복 인용되었습니다." };
   }
 
+  const lines = String(articleContent ?? "").split(/\r?\n/);
+  const hangSet = new Set();
+  const hoSet = new Set();
+  const mokSet = new Set();
+  let activeHang = null;
+  let activeHo = null;
+
+  for (const line of lines) {
+    let m = line.match(/^\s*제(\d+)항(?!\s*제\d+호)(?:\s|$)/);
+    if (m) {
+      activeHang = Number(m[1]);
+      activeHo = null;
+      hangSet.add(activeHang);
+      continue;
+    }
+    m = line.match(/^\s*(?:제(\d+)항\s*)?제?(\d+)호(?:\s|$)/);
+    if (m) {
+      const parentHang = m[1] ? Number(m[1]) : activeHang;
+      const ho = Number(m[2]);
+      activeHang = parentHang;
+      activeHo = ho;
+      hoSet.add(`${parentHang ?? "_"}:${ho}`);
+      continue;
+    }
+    m = line.match(/^\s*([가-하])목(?:\s|$)/);
+    if (m && activeHo != null) mokSet.add(`${activeHang ?? "_"}:${activeHo}:${m[1]}`);
+  }
+
+  const hang = tokens.find(x => x.type === "hang")?.value;
+  const ho = tokens.find(x => x.type === "ho")?.value;
+  const mok = tokens.find(x => x.type === "mok")?.value;
+  if (hang != null && !hangSet.has(hang)) {
+    return { valid: false, reason: `원문에 제${hang}항이 존재하지 않습니다.` };
+  }
+  if (ho != null && !hoSet.has(`${hang ?? "_"}:${ho}`) && !hoSet.has(`_:${ho}`)) {
+    return { valid: false, reason: `원문에 ${hang != null ? `제${hang}항 ` : ""}제${ho}호가 존재하지 않습니다.` };
+  }
+  if (mok != null && !mokSet.has(`${hang ?? "_"}:${ho}:${mok}`) && !mokSet.has(`_:${ho}:${mok}`)) {
+    return { valid: false, reason: `원문에 ${mok}목이 해당 호의 하위 항목으로 존재하지 않습니다.` };
+  }
+  return { valid: true };
+}
+
+function extractLawCitations(text, sources, primaryLawName) {
+  const citations = [];
+  const occupied = [];
+  const lawNames = [...sources.keys()].sort((a, b) => b.length - a.length);
+
+  for (const lawKey of lawNames) {
+    const flexibleName = lawKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").split("").join("\\s*");
+    const suffixPattern = `((?:\\s*(?:제\\s*\\d+\\s*항|제\\s*\\d+\\s*호|[가-하]\\s*목|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\\s*항))*)`;
+    const regex = new RegExp(`${flexibleName}\\s*(제\\s*\\d+\\s*조(?:\\s*의\\s*\\d+)?)(?:${suffixPattern})`, "g");
+    let match;
+    while ((match = regex.exec(text))) {
+      const articleNum = normalizeLawCitationText(match[1]);
+      const suffixInfo = parseCitationSuffix(match[2] || "");
+      citations.push({
+        lawKey,
+        articleNum,
+        tokens: suffixInfo.tokens,
+        raw: match[0],
+        start: match.index,
+        end: match.index + match[0].length
+      });
+      occupied.push([match.index, match.index + match[0].length]);
+    }
+  }
+
+  const bareRegex = /제\s*(\d+)\s*조(?:\s*의\s*(\d+))?((?:\s*(?:제\s*\d+\s*항|제\s*\d+\s*호|[가-하]\s*목|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*항))*)/g;
+  let match;
+  while ((match = bareRegex.exec(text))) {
+    const start = match.index;
+    if (occupied.some(([a, b]) => start >= a && start < b)) continue;
+    const suffixInfo = parseCitationSuffix(match[3] || "");
+    citations.push({
+      lawKey: normalizeLawCitationText(primaryLawName),
+      articleNum: `제${match[1]}조${match[2] ? `의${match[2]}` : ""}`,
+      tokens: suffixInfo.tokens,
+      raw: match[0],
+      start,
+      end: match.index + match[0].length
+    });
+  }
+  return citations;
+}
+
+function validateLawArticleCitations(quiz, article, refContent, auditResult = null) {
+  const sources = buildLawSourceMap(article, refContent);
+  const primaryLawKey = normalizeLawCitationText(article?.lawName);
   const texts = [
     quiz?.question,
     quiz?.answer,
     quiz?.explanation_answer,
     quiz?.explanation?.string,
-    ...(Array.isArray(quiz?.options)
-      ? quiz.options.map(option => option?.text)
-      : [])
+    ...(Array.isArray(quiz?.options) ? quiz.options.map(option => option?.text) : [])
   ].filter(value => typeof value === "string");
 
-  for (const [lawKey, allowedArticles] of available) {
-    const lawName = lawKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const flexibleLawName = lawName.split("").join("\\s*");
-
-    const citationRegex = new RegExp(
-      `${flexibleLawName}\\s*(제\\s*\\d+\\s*조(?:\\s*의\\s*\\d+)?)`,
-      "g"
-    );
-
-    for (const text of texts) {
-      for (const citation of text.matchAll(citationRegex)) {
-        const citedArticle = normalize(citation[1]);
-
-        if (!allowedArticles.has(citedArticle)) {
-          return {
-            valid: false,
-            reason: `제공된 원문에 없는 조문 인용: ${lawKey} ${citedArticle}. 제공된 조문: ${[...allowedArticles].join(", ")}`
-          };
-        }
-      }
+  const citations = texts.flatMap(text => extractLawCitations(text, sources, primaryLawKey));
+  for (const citation of citations) {
+    const lawArticles = sources.get(citation.lawKey);
+    const sourceContent = lawArticles?.get(citation.articleNum);
+    if (!sourceContent) {
+      return {
+        valid: false,
+        reason: `제공된 법령 원문에서 확인되지 않는 인용입니다: ${citation.lawKey} ${citation.articleNum}`
+      };
+    }
+    const hierarchy = validateCitationHierarchy(sourceContent, citation);
+    if (!hierarchy.valid) {
+      return {
+        valid: false,
+        reason: `${citation.lawKey} ${citation.articleNum} ${citation.raw}: ${hierarchy.reason}`
+      };
     }
   }
-  // 포괄적으로 적용된다고 인정한 조문 범위 안의 특정 조항을
-  // 해설 후반부에서 다시 적용 제외로 단정하는 자기모순을 차단한다.
-  const auditText = texts.join("\n");
-  const articleRanges = [...auditText.matchAll(
-    /제\s*(\d+)\s*조\s*부터\s*(?:제\s*)?(\d+)\s*조\s*까지/g
-  )];
 
-  for (const range of articleRanges) {
-    const start = Number(range[1]);
-    const end = Number(range[2]);
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start > end || end - start > 300) continue;
-
-    for (let articleNo = start; articleNo <= end; articleNo++) {
-      const articlePattern = new RegExp(
-        `제\\s*${articleNo}\\s*조[^\\n.!?。]{0,180}(?:적용되지\\s*않|적용할\\s*수\\s*없|적용받지\\s*않|해당하지\\s*않|포함되지\\s*않)`,
-        "i"
+  // 감사 모델의 인용 근거가 실제로 해당 인용 조문의 본문을 뒷받침하는지 확인한다.
+  if (auditResult && citations.length) {
+    const claimEvidence = Array.isArray(auditResult.claim_evidence) ? auditResult.claim_evidence : [];
+    for (const citation of citations) {
+      const sourceContent = sources.get(citation.lawKey)?.get(citation.articleNum) || "";
+      const related = claimEvidence.filter(item => {
+        const claimText = `${item?.claim ?? ""} ${item?.reasoning ?? ""}`;
+        const compactClaim = normalizeLawCitationText(claimText);
+        return compactClaim.includes(citation.articleNum) ||
+          compactClaim.includes(`${citation.lawKey}${citation.articleNum}`);
+      });
+      const supported = related.length > 0 && related.some(item =>
+        getBestEvidenceSimilarity(item?.evidence_quote, sourceContent) >= 0.9
       );
-
-      if (articlePattern.test(auditText)) {
+      if (!supported) {
         return {
           valid: false,
-          reason: `조문 범위 내부 모순: 제${start}조부터 제${end}조까지 적용 대상으로 제시하면서 제${articleNo}조는 적용되지 않는다고 서술했습니다. 원문에 명시적인 예외가 있는지 다시 검증해야 합니다.`
+          reason: `${citation.lawKey} ${citation.articleNum} 인용을 뒷받침하는 직접 근거가 해당 조문 원문에서 확인되지 않습니다. 참조 자료에 조문이 존재한다는 사실만으로는 인용을 인정하지 않습니다.`
         };
       }
     }
   }
+
   return { valid: true };
 }
-
 // ============================================================================
 // 5. 퀴즈 서비스 및 검증 파이프라인 (Quiz AI Service)
 // ============================================================================
