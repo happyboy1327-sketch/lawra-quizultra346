@@ -1826,7 +1826,7 @@ const unsupportedQuotes = result.claim_evidence
     if (!q || q.length < 5) return false; // 너무 짧은 인용구는 패스
     if (sourceNormalized.includes(q)) return false;
     if (q.includes(sourceNormalized)) return false;
-    return getSimilarity(q, sourceNormalized) < 0.7; // 70% 글자 유사도 가드
+    return getSimilarity(q, sourceNormalized) < 0.78; // 70% 글자 유사도 가드
   })
   .map(item => String(item.evidence_quote).slice(0, 100));
 
