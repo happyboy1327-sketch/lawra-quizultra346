@@ -1,3 +1,4 @@
 /.env
 /a.mjs
+/api/a.patch
 /node_modules
