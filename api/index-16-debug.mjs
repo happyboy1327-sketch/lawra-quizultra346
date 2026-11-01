@@ -1417,6 +1417,9 @@ const QuizService = {
     if (!quiz.explanation || typeof quiz.explanation.string !== "string" || !quiz.explanation.string.trim()) {
       return { valid: false, reason: "필수 필드 누락 또는 빈 값: explanation.string" };
     }
+    if (quiz.explanation.Boolean !== true) {
+      return { valid: false, reason: "explanation.Boolean이 true가 아님" };
+    }
     if (!Array.isArray(quiz.options) || quiz.options.length !== 3) {
       return { valid: false, reason: `보기는 정확히 3개여야 함 (현재 ${quiz.options?.length ?? 0}개)` };
     }
@@ -1460,8 +1463,44 @@ const QuizService = {
 
       // 복수 정답 검증: matches_question이 true인 항목이 오직 1개인지 확인
       const matchingIndexes = assessments.filter(item => item.matches_question === true).map(item => Number(item.option_index));
-      if (matchingIndexes.length !== 1 || matchingIndexes[0] !== correctIndex) {
+      if (Number(result.selected_option_index) !== correctIndex || matchingIndexes.length !== 1 || matchingIndexes[0] !== correctIndex) {
         return { valid: false, reason: `복수 정답 또는 정답 매칭 오류 (유효 정답 수: ${matchingIndexes.length}개)` };
+      }
+
+      const polarity = String(result.question_polarity || "").toLowerCase();
+
+if (!["negative", "positive", "direct"].includes(polarity)) {
+  return {
+    valid: false,
+    reason: "감사 모델의 question_polarity 누락 또는 잘못된 값",
+    audit: result
+  };
+}
+
+if (polarity === "negative" || polarity === "positive") {
+  const expectedTruth = polarity === "negative" ? "false" : "true";
+
+  const truthValue = value =>
+    value === true || value === "true" ? "true" : "false";
+
+  if (
+    truthValue(assessments[correctIndex].statement_truth) !== expectedTruth ||
+    assessments.some((item, index) =>
+      item.matches_question &&
+      truthValue(item.statement_truth) !== expectedTruth
+    )
+  ) {
+    return {
+      valid: false,
+      reason: `질문 방향과 정답 보기의 진위 불일치 (polarity=${polarity})`,
+      audit: result
+    };
+  }
+}
+
+      if (!Array.isArray(result.claim_evidence) || result.claim_evidence.length === 0 ||
+          result.claim_evidence.some((x) => !x?.claim || !x?.evidence_quote || !x?.reasoning)) {
+        return { valid: false, reason: "감사 응답에 주장-원문근거-추론 연결이 충분히 제시되지 않음", audit: result };
       }
 
       return { valid: true, reason: "원문 및 인용법령 감사 통과", audit: result };
