@@ -2,11 +2,11 @@
   "name": "lawra-quiz",
   "version": "1.0.0",
   "description": "",
-  "main": "index.mjs",
+  "main": "index-16-debug.mjs",
   "type": "module",
   "scripts": {
-    "start": "node api/index.mjs",
-    "dev": "node api/index.mjs"
+    "start": "node api/index-16-debug.mjs",
+    "dev": "node api/index-16-debug.mjs"
   },
   "keywords": [],
   "author": "",
