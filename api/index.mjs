@@ -2116,8 +2116,8 @@ if (polarity === "negative" || polarity === "positive") {
   }
 },
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
+    try {
     for (let attempt = 1; attempt <= maxTries; attempt++) {
-      try {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
       const article = await LawService.fetchRandomArticle(law);
       if (!article) continue;
@@ -2137,13 +2137,12 @@ if (polarity === "negative" || polarity === "positive") {
         const { explanation_answer, calcError, ...clean } = result.quiz;
         return { ...clean, plaintextPackage: result.plaintext };
       }
-    } catch (err) { 
-        console.error("문법 오류로 실행되지 않았습니다.");
-      }
     }
-    console.warn(`[슬롯 ${slotIndex}] 모든 시도했지만 퀴즈 생성 실패`);
     return null;
-  };
+  } catch (err) {
+    console.error('실행 오류');
+    }
+ };
 
 // ============================================================================
 // 6. API 라우팅 (API Routes)
