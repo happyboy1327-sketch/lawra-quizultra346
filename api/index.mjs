@@ -2142,7 +2142,7 @@ if (polarity === "negative" || polarity === "positive") {
   } catch (err) {
     console.error('실행 오류');
     }
- };
+ }
 
 // ============================================================================
 // 6. API 라우팅 (API Routes)
