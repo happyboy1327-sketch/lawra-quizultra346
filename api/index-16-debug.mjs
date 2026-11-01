@@ -12,8 +12,8 @@ dotenv.config();
 // ============================================================================
 // QUIZ DEBUG
 // ============================================================================
-const DEBUG_QUIZ = false;
-const DEBUG_MAX_LEN = 6000;
+const DEBUG_QUIZ = true;
+const DEBUG_MAX_LEN = 12000;
 
 function debugLog(label, data, maxLen = DEBUG_MAX_LEN) {
   if (!DEBUG_QUIZ) return;
@@ -111,7 +111,7 @@ function assembleQuizPlaintext(article, refContent, quiz) {
 }
 
 // ============================================================================
-// 2. 유틸리티 (Utilities)
+// 2. 유틸리티 및 계산 엔진 (Utilities & Calc)
 // ============================================================================
 const Calc = {
   isHoliday(date) {
@@ -307,21 +307,6 @@ const Utils = {
       .replace(/제\s*(\d+)\s*조\s*(\d+)호/g, '제$1조제$2호');
   },
 
-  remapOptionRefs: (text, noMap) => {
-    const CIRCLED = ["①", "②", "③"];
-    const map = (n) => noMap.get(n) ?? n;
-    return text
-      .replace(/(?<!\d)([1-3])(\s*번)/g, (_, n, tail) => `${map(Number(n))}${tail}`)
-      .replace(/([①②③])(\s*번)/g, (_, c, tail) => `${CIRCLED[map(CIRCLED.indexOf(c) + 1) - 1]}${tail}`)
-      .replace(/((?:보기|선택지)\s*)([1-3])(?!\d|\s*번|\s*번의)/g, (_, head, n) => `${head}${map(Number(n))}`);
-  },
-  
-  extractDate: function (text) {
-    if (!text) return null;
-    const match = text.match(/(\d{4}년\s*\d{1,2}월\s*\d{1,2}일|\d{4}[-./]\d{1,2}[-./]\d{1,2})/);
-    return match ? match[0] : null;
-  },
-
   normalizeQuiz: function (quiz, articleNum) {
     if (!quiz || typeof quiz !== "object") return null;
     quiz = applyCalc(quiz);
@@ -415,7 +400,7 @@ const Utils = {
             }))
             .sort((a, b) => b.score - a.score);
 
-          if (scored[0]?.score >= 0.3) {
+          if (scored[0]?.score >= 0.4) {
             targetIndex = scored[0].index;
           }
         }
@@ -1005,7 +990,7 @@ const LawService = {
 };
 
 // ============================================================================
-// 4. 프롬프트 정의 (Prompts)
+// 4. 프롬프트 정의 (Prompts - 복수정답 방지 및 부정문/긍정문 진위 검사 강화)
 // ============================================================================
 const randomOptionsTemplate = () => {
   const pos = Math.floor(Math.random() * 3);
@@ -1032,53 +1017,21 @@ ${content}
 ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 위 조문의 내용과 참조 및 인용 조문 내용을 모두 읽고 실제 법률 지식을 테스트할 수 있는 퀴즈를 작성하세요.
 
+### [★ 복수 정답 원천 차단 및 긍정/부정 진위 규칙]
+1. **정답은 반드시 오직 1개여야 합니다.** 
+2. **질문 유형별 진위 규칙**:
+   - 질문이 긍정형(예: "옳은 것은?", "맞는 것은?", "~할 수 있는 것은?")이면, **오직 1개의 정답 보기만 법적으로 참(True)**이어야 하고, 나머지 2개의 오답 보기는 기간, 주체, 요건 등을 왜곡하여 **명백한 거짓(False)**이어야 합니다.
+   - 질문이 부정형(예: "틀린 것은?", "~가 아닌 것은?", "~할 수 없는 것은?")이면, **오직 1개의 정답 보기만 법적으로 성립하지 않는 거짓(False)**이어야 하고, 나머지 2개의 오답 보기는 **명백한 참(True)**이어야 합니다.
+3. 조문 안에 참인 내용이 여러 개 있다고 해서 **다른 참인 법리를 오답 보기에 절대 섞지 마십시오.** 복수 정답이 발생하는 순간 치명적인 오류가 됩니다.
+4. 계산 수식이나 날짜/금액 계산이 필요한 경우 'calcul_check'를 적극 활용하고 본문에는 {{c1}}, {{c2}} 플레이스홀더를 사용하세요.
+
 ### [한국어 문장 품질 규칙 - 필수]
 1. 문제·보기·정답·해설은 자연스럽고 정확한 현대 한국어로 작성한다.
 2. 질문은 쟁점 하나를 간결하게 묻고, 보기와 직접 연결되게 작성한다.
 3. 법률상 권리·권한·절차와 주체, 객체, 권리자, 의무자를 서로 바꾸어 쓰지 않는다.
 4. 보기 세 개는 각각 독립된 한 문장으로 작성한다.
 5. 세 보기의 문장 구조와 종결 형식을 통일한다.
-6. 예외, 단서, 요건, 조건이 있다면 절대로 생략하거나 혼동하지 않는다.
-6-1. 조례·규칙 등에 위임된 사항을 출제할 때에는 원문에 명시된 위임 대상과 범위를 그대로 구분한다. "기타 사항" 또는 "그 밖에 필요한 사항"이라는 표현만으로 법령에 없는 위임 범위를 만들어 내지 않는다. 위임 주체의 권한과 회의의 심의·확정 대상, 회의의 구성·운영 사항을 혼동하지 않는다.
-7. 해설은 3단계 단문 구조([결론], [법령 근거], [사안 대입])로만 작성한다. 질문에 사례와 가명이 없다면 [사안 대입]은 완전히 생략해야만 한다.
-8. **[부정문/불가능·금지형 질문 처리 규칙]** 질문이 "~가 아닌 것은?", "~에 해당하지 않는 것은?", "~할 수 없는 것은?", "~로 정할 수 없는 것은?", "~할 수 없는 사항은?", "허용되지 않는 것은?", "금지되는 것은?", "위반되는 것은?"처럼 부정·불가능·금지 대상을 고르는 형식이면 negative 질문이다. 이때 각 보기를 독립적인 명제 또는 법적 가능성 주장으로 평가하고, 정답(is_correct: true)은 법령상 성립하지 않는 거짓(False)인 주장이어야 한다. 나머지 두 보기는 법령상 성립하는 참(True)인 주장이어야 한다. 질문이 "~할 수 있는 것은?"처럼 가능·허용 대상을 고르면 positive다. 단순히 행위나 법적 효과 자체를 묻고 보기의 참·거짓을 고르는 구조가 아니면 direct다. 질문의 표현만 보고 기계적으로 분류하지 말고 질문이 요구하는 논리 방향을 먼저 확정하라.
-
-### [지침 1: 문제 및 선택지 작성 규칙]
-1. **질문 형식**
-   - 질문은 반드시 구체적인 의문문이나 "고르시오"같은 평서문으로 작성하십시오.
-   - 질문의 사실관계와 배치되는 내용을 선택지에 임의로 작성하여 정답으로 만들지 마시오.
-2. **인물 및 가명 설정**
-   - 질문에서는 인물/기업 가명은 A씨, B사, 김 씨, 서 씨 등으로 표기하십시오. **가명이 질문에 있을 경우에만 해설에서 언급하여 쓰십시오.**
-   - 직업 및 역할 명시는 법률상 중요할 때만 포함하십시오.
-3. **사실관계 및 인과관계 검증**
-   - 인과관계, 선후관계, 상관관계, 시간 및 사건 서순, 계산식, 법률용어가 논리적으로 완벽해야 합니다.
-4. **요건 충족 여부와 선택지 구성**
-   - 모든 선택지의 문장 구조와 종결어미 형태를 동일하게 맞추십시오.
-
-### [지침 2: 정답 및 데이터 포맷]
-1. **정답의 일률성**
-   - 질문 전제에 부합하는 정답은 오직 **1개**여야 하며, 나머지는 명백한 오답으로 구성하십시오.
-2. **해설의 Boolean (false) 판정 기준**
-   - 주체와 객체가 불분명하거나 착각하여 작성된 경우, 기간·금액·나이·날짜 계산 오류 시 false 처리.
-
----
-
-### [지침 3: 조문 인용 및 법리 적용]
-1. **조문 번호 언급 제한**
-   - 인용 조문 번호는 해설 작성 시 정확히 언급하되, 존재하지 않는 항 번호를 임의로 지어내지 마십시오.
-2. **볼드체 강조 및 수치 검증**
-   - 조문 원문 및 해설 작성 시 **기간, 정도, 금액, 명 수, 법률 적용 기준**은 반드시 **볼드체**로 작성하십시오.
-
----
-
-### [지침 4: 할루시네이션(환각) 방지 및 작성 범위]
-1. **선택지의 독립적인 진위 판단**
-   - 선택지의 진위는 출제 대상 조문에 적힌 내용인지 여부만으로 결정하지 말고 법리적 타당성을 따르십시오.
-
----
-
-### [지침 5: 숫자 계산]
-1. [증액·감액 기준] / [시공간 및 날짜 계산] / [calcul_check 활용 및 치환] 규칙 엄수.
+6. 해설은 3단계 단문 구조([결론], [법령 근거], [사안 대입])로만 작성한다. 질문에 사례와 가명이 없다면 [사안 대입]은 완전히 생략해야 한다.
 
 출력 형식:
 {
@@ -1098,12 +1051,15 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 }`,
 
   audit: (quiz, article, refContent) => `
-너는 생성된 법률 퀴즈의 근거와 추론을 감사하는 검토자다. 아래 제공된 원문 및 인용법령을 근거로 퀴즈의 핵심 주장과 결론이 실제 뒷받침되는지 검토하라.
-부정문 질문(예: "~가 아닌 것은?", "~할 수 없는 것은?")이면 정답 선택지의 statement_truth는 "false", 나머지는 "true"여야 한다. 긍정문이면 정답은 "true", 나머지는 "false"여야 한다.
+너는 생성된 법률 퀴즈의 근거와 추론을 감사하는 검토자다. 아래 제공된 원문 및 인용법령을 근거로 퀴즈의 핵심 주장과 결론이 실제 뒷받침되는지 엄격히 검토하라.
 
-감사 절차 및 판정 기준:
-- supported: 세 보기 각각의 법적 주장이 원문 또는 제공된 참조 조문으로 검증되고, 질문의 논리 방향에 맞는 정답이 정확히 하나이며 누락·모순이 없다.
-- unsupported / insufficient: 원문과 충돌하거나 근거가 부족한 경우.
+### [★ 복수 정답 및 진위 엄격 검사 규칙]
+1. **question_polarity**: 질문이 "~가 아닌 것은?", "~할 수 없는 것은?", "틀린 것은?" 등 부정형이면 "negative", "옳은 것은?", "맞는 것은?" 등 긍정형이면 "positive"로 정확히 분류하라.
+2. **복수 정답 차단**: matches_question이 true인 선택지는 반드시 단 1개여야 한다. 0개이거나 2개 이상이면 즉시 pass=false 처리하라.
+3. **진위 일치 검사**:
+   - polarity가 "negative"인 경우, 정답 선택지의 statement_truth는 "false"여야 하고 나머지 두 오답 선택지의 statement_truth는 "true"여야 한다.
+   - polarity가 "positive"인 경우, 정답 선택지의 statement_truth는 "true"여야 하고 나머지 두 오답 선택지의 statement_truth는 "false"여야 한다.
+4. **해설 모순 검사**: 해설 본문의 결론과 정답 선택지 간에 모순이 있으면 exlanation_contradiction는 **true**여야 하며, 모순이 없어야만 **false**이다. (모순이 있으면 통과 불가)
 
 [출제 대상 법령]
 ${article.lawName} ${article.num}
@@ -1114,7 +1070,9 @@ ${refContent || "제공된 참조 조문 없음"}
 [생성된 퀴즈]
 ${JSON.stringify(quiz, null, 2)}
 
-반드시 순수 JSON만 출력한다.
+CASE>> 반드시 1) 또는 2)의 형태로 순수 JSON만 출력한다.
+
+1) 긍정 질문일 경우
 {
   "pass": true,
   "verdict": "supported",
@@ -1129,10 +1087,27 @@ ${JSON.stringify(quiz, null, 2)}
    ],
   "issues": [],
   "claim_evidence": [{"claim": "주장", "evidence_quote": "근거", "reasoning": "추론"}]
+  }
+  
+  2) 부정 질문일 경우
+{
+  "pass": true,
+  "verdict": "supported",
+  "question_polarity": "negative",
+  "question_compatibility": true,
+  "exlanation_contradiction": false, 
+  "selected_option_index": 0,
+  "option_assessments": [
+    {"option_index": 0, "statement_truth": "false", "matches_question": true, "evidence_quote": "인용", "reasoning": "이유"},
+    {"option_index": 1, "statement_truth": "true", "matches_question": false, "evidence_quote": "인용", "reasoning": "이유"},
+    {"option_index": 2, "statement_truth": "true", "matches_question": false, "evidence_quote": "인용", "reasoning": "이유"}
+   ],
+  "issues": [],
+  "claim_evidence": [{"claim": "주장", "evidence_quote": "근거", "reasoning": "추론"}]
   }`,
 
   correction: (quiz, article, errorReason) => `
-당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 검토 과정에서 문제가 발견되었습니다. 아래 오류 사유를 반영하여 수정하십시오.
+당신은 대한민국 법률 퀴즈 출제자입니다. 다음 퀴즈는 검토 과정에서 복수 정답 또는 논리 오류가 발견되었습니다. 아래 오류 사유를 반영하여 수정하십시오.
 [원문 조문]
 ${article.content}
 ${article.referencedContent ? `\n[참조 조문]\n${article.referencedContent}` : ''}
@@ -1147,10 +1122,10 @@ ${JSON.stringify(quiz, null, 2)}
 function detectQuestionPolarity(question) {
   const q = String(question ?? "").replace(/\s+/g, "");
   const negativePatterns = [
-    /(?:옳지|맞지|틀린|잘못된|부적절한|적절하지 않은|타당하지 않은|해당하지 않은|아닌)것/,
+    /(?:옳지|맞지|틀린|잘못된|부적절한|적절하지않은|타당하지않은|해당하지않는|아닌)것/,
     /(?:할|될|정할|적용할|인정할|허용할|구성할|포함할)수없는(?:것|사항|경우)?/,
-    /(?:허용되지 않는|금지되는|위반되는|배제되는|제외되는)것/,
-    /(?:불가능한|허용되지 않는)사항/
+    /(?:허용되지않는|금지되는|위반되는|배제되는|제외되는)것/,
+    /(?:불가능한|허용되지않는)사항/
   ];
   if (negativePatterns.some(pattern => pattern.test(q))) return "negative";
 
@@ -1175,7 +1150,7 @@ function getTextSimilarity(a, b) {
   const longer = a.length >= b.length ? a : b;
   const shorter = a.length >= b.length ? b : a;
   if (!longer.length) return 1;
-  const maxDistance = Math.floor(longer.length * 0.15); // 허용 오차 약간 상향
+  const maxDistance = Math.floor(longer.length * 0.15);
   if (longer.length - shorter.length > maxDistance) return 0;
 
   let previous = Array.from({ length: shorter.length + 1 }, (_, i) => i <= maxDistance ? i : Infinity);
@@ -1202,7 +1177,7 @@ function getTextSimilarity(a, b) {
 
 function getBestEvidenceSimilarity(quote, source) {
   const q = normalizeEvidenceText(quote);
-  if (!q || q.length < 3) return 1; // 너무 짧으면 통과 허용
+  if (!q || q.length < 4) return 0;
   const normalizedSource = normalizeEvidenceText(source);
   if (normalizedSource.includes(q)) return 1;
 
@@ -1210,19 +1185,17 @@ function getBestEvidenceSimilarity(quote, source) {
     .split(/[\r\n.!?。；;]+/)
     .map(normalizeEvidenceText)
     .filter(Boolean);
-  
-  if (!segments.length) return 1; // 원문이 비어있으면 통과 처리
+  const candidates = [...segments];
+  for (let i = 0; i < segments.length - 1; i++) candidates.push(segments[i] + segments[i + 1]);
 
   let best = 0;
-  for (const segment of segments) {
-    if (segment.includes(q) || q.includes(segment)) {
-      return 1;
-    }
-    const sim = getTextSimilarity(q, segment);
+  for (const candidate of candidates) {
+    if (candidate.includes(q)) return 1;
+    const sim = getTextSimilarity(q, candidate);
     if (sim > best) best = sim;
-    if (best >= 0.5) return best; // 컷오프를 0.5로 대폭 완화하여 억울한 반려 방지
+    if (best >= 0.65) return best;
   }
-  return Math.max(best, 0.51); // 기본적으로 완화 통과 보장
+  return best;
 }
 
 function buildLawSourceMap(article, refContent) {
@@ -1267,28 +1240,7 @@ function parseCitationSuffix(suffix) {
   return { tokens, consumed: lastIndex, compact };
 }
 
-// ----------------------------------------------------------------------------
-// [핵심 개선] 원문 항/호 검증 시 억울한 차단을 방지하는 유연한 검증 로직
-// ----------------------------------------------------------------------------
 function validateCitationHierarchy(articleContent, citation) {
-  const tokens = citation.tokens;
-  if (!tokens.length) return { valid: true };
-
-  const fullText = String(articleContent ?? "");
-  const hangToken = tokens.find(x => x.type === "hang")?.value;
-  const hoToken = tokens.find(x => x.type === "ho")?.value;
-
-  // 만약 조문 전체 텍스트 내에 해당 항 번호(예: "제2항", "②", "2.")가 포함되어 있다면 무조건 유효한 것으로 인정!
-  if (hangToken != null) {
-    const hasHang = fullText.includes(`제${hangToken}항`) || 
-                    fullText.includes(`${['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'][hangToken-1]}`) ||
-                    fullText.includes(`${hangToken}.`);
-    if (!hasHang) {
-      // 완화 정책: 엄격한 차단 대신 허용 (불필요한 억까 방지)
-      // return { valid: false, reason: `원문에 제${hangToken}항이 존재하지 않습니다.` };
-    }
-  }
-
   return { valid: true };
 }
 
@@ -1335,31 +1287,7 @@ function extractLawCitations(text, sources, primaryLawName) {
   return citations;
 }
 
-function validateLawArticleCitations(quiz, article, refContent) {
-  const sources = buildLawSourceMap(article, refContent);
-  const primaryLawKey = normalizeLawCitationText(article?.lawName);
-  const texts = [
-    quiz?.question,
-    quiz?.answer,
-    quiz?.explanation_answer,
-    quiz?.explanation?.string,
-    ...(Array.isArray(quiz?.options) ? quiz.options.map(option => option?.text) : [])
-  ].filter(value => typeof value === "string");
-
-  const citations = texts.flatMap(text => extractLawCitations(text, sources, primaryLawKey));
-  for (const citation of citations) {
-    const lawArticles = sources.get(citation.lawKey);
-    const sourceContent = lawArticles?.get(citation.articleNum);
-    if (!sourceContent) {
-      // 완화: 조문 데이터맵에 없더라도 주요 법령명이 일치하면 억울한 차단 없이 통과 허용
-      continue;
-    }
-    const hierarchy = validateCitationHierarchy(sourceContent, citation);
-    if (!hierarchy.valid) {
-      continue; // 억울한 차단 방지
-    }
-  }
-
+function validateLawArticleCitations(quiz, article, refContent, auditResult = null) {
   return { valid: true };
 }
 
@@ -1386,28 +1314,11 @@ const QuizService = {
       reasoning_effort: reasoningEffort,
     });
     const content = response?.choices?.[0]?.message?.content;
-    debugLog("MISTRAL_RAW_RESPONSE", {
-      model: MODEL,
-      reasoningEffort,
-      promptPreview: String(prompt || "").slice(0, 2000),
-      finishReason: response?.choices?.[0]?.finishReason,
-      usage: response?.usage,
-      content
-    });
-    if (typeof content !== "string") {
-      debugFail("MISTRAL_NO_CONTENT", { reasoningEffort, response });
-      return null;
-    }
+    debugLog("MISTRAL_RAW_RESPONSE", { model: MODEL, reasoningEffort, content });
+    if (typeof content !== "string") return null;
     try {
-      const parsed = JSON.parse(content);
-      debugLog("MISTRAL_PARSED_OK", parsed);
-      return parsed;
+      return JSON.parse(content);
     } catch (parseError) {
-      debugFail("MISTRAL_JSON_PARSE", {
-        reasoningEffort,
-        message: parseError?.message,
-        rawContent: content
-      });
       throw parseError;
     }
   },
@@ -1415,83 +1326,27 @@ const QuizService = {
   async generateQuiz(article, retriesLeft = 2) {
     if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) return null;
     
-    const isConstitution = article.lawName.includes("대한민국헌법") || article.lawId == "001444" || article.lawId == "61603";
+    const isConstitution = article.lawName.includes("대한민국헌법");
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
     const userPrompt = PROMPTS.generate(article, content, refContent);
-
-    const systemInstruction = !isConstitution
-      ? `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라. 반드시 3지선다형으로만 낼것.\n{ "error": "[IDK]" }\n`
-      : `[SYSTEM 지침]\n헌법 퀴즈는 반드시 완수하라. 반드시 3지선다형으로만 낼것.\n`;
-
-    const finalPrompt = systemInstruction + userPrompt;
+    const finalPrompt = (isConstitution ? "" : `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라.\n{ "error": "[IDK]" }\n`) + userPrompt;
 
     try {
       await this.throttle();
-      const requestOptions = {
+      const response = await client.chat.complete({
         model: MODEL,
         responseFormat: { type: "json_object" },
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
         top_p: 0.0,
         reasoning_effort: "medium",
-      };  
-
-      if (!isConstitution) {
-        requestOptions.stop = ["[IDK]"];
-      }
-
-      const response = await client.chat.complete(requestOptions);
-      let contentRes = response?.choices?.[0]?.message?.content;
-      debugLog("GENERATE_RAW_RESPONSE", {
-        law: article?.lawName,
-        articleNum: article?.num,
-        retriesLeft,
-        finishReason: response?.choices?.[0]?.finishReason,
-        usage: response?.usage,
-        rawContent: contentRes
       });
-      if (typeof contentRes !== "string") {
-        debugFail("GENERATE_NO_CONTENT", {
-          law: article?.lawName,
-          articleNum: article?.num,
-          retriesLeft,
-          response
-        });
-        return null;
-      }
+      let contentRes = response?.choices?.[0]?.message?.content;
+      if (typeof contentRes !== "string") return null;
 
-      let rawQuiz = null;
-      try {
-        const sanitized = contentRes.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-        rawQuiz = JSON.parse(sanitized);
-      } catch (error) {
-        debugFail("GENERATE_JSON_PARSE", {
-          law: article?.lawName,
-          articleNum: article?.num,
-          retriesLeft,
-          isConstitution,
-          message: error?.message,
-          rawContent: contentRes
-        });
-        if (isConstitution && retriesLeft > 0) {
-          await Utils.sleep(1000);
-          return this.generateQuiz(article, retriesLeft - 1);
-        }
-        return null; 
-      }
-      
-      const isEmptyQuiz = !rawQuiz || Object.keys(rawQuiz).length === 0;
-      const isErrorResponse = rawQuiz && (rawQuiz.error || rawQuiz.message || !rawQuiz.question);
-      
-      if ((isEmptyQuiz || isErrorResponse) && !isConstitution) return null;
-      if ((isEmptyQuiz || isErrorResponse) && isConstitution) {
-        if (retriesLeft > 0) {
-          await Utils.sleep(1000);
-          return this.generateQuiz(article, retriesLeft - 1);
-        }
-        return null;
-      }
+      let rawQuiz = JSON.parse(contentRes.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim());
+      if (!rawQuiz || rawQuiz.error) return null;
       
       return Utils.normalizeQuiz(rawQuiz, article.num);
     } catch (err) {
@@ -1515,18 +1370,14 @@ const QuizService = {
     if (!quiz.explanation || typeof quiz.explanation.string !== "string" || !quiz.explanation.string.trim()) {
       return { valid: false, reason: "필수 필드 누락 또는 빈 값: explanation.string" };
     }
-    
-    quiz.explanation.Boolean = true; 
-    
-    if (!Array.isArray(quiz.options) || (quiz.options.length !== 3 && quiz.options.length !== 4)) {
-      return { valid: false, reason: `보기는 3개 또는 4개여야 함 (현재 ${quiz.options?.length ?? 0}개)` };
+    if (!Array.isArray(quiz.options) || quiz.options.length !== 3) {
+      return { valid: false, reason: `보기는 정확히 3개여야 함 (현재 ${quiz.options?.length ?? 0}개)` };
     }
 
     const correct = quiz.options.filter((o) => o.is_correct === true);
     if (correct.length !== 1) {
-      return { valid: false, reason: `정답 표시는 정확히 하나여야 함 (현재 ${correct.length}개)` };
+      return { valid: false, reason: `정답 표시는 정확히 하나여야 함 (현재 ${correct.length}개 - 복수 정답 불가)` };
     }
-
     if (quiz.calcError) return { valid: false, reason: String(quiz.calcError) };
     return { valid: true };
   },
@@ -1535,28 +1386,44 @@ const QuizService = {
     const sourceText = String(article?.content || "").trim();
     if (!sourceText) return { valid: false, reason: "조문 원문 없음" };
     try {
-      const result = await this.requestMistral(PROMPTS.audit(quiz, article, String(refContent || "").trim()), "medium");
-      debugLog("AUDIT_RESULT", {
-        law: article?.lawName,
-        articleNum: article?.num,
-        quiz,
-        audit: result
-      });
-      if (!result || typeof result !== "object" || Array.isArray(result)) {
-        return { valid: true, reason: "감사 응답 형식 유연 통과" }; // 억울한 차단 방지
+      const result = await this.requestMistral(PROMPTS.audit(quiz, article, String(refContent || "").trim()), "xhigh");
+      if (!result || typeof result !== "object") {
+        return { valid: false, reason: "감사 응답 오류" };
       }
       
+      const exlanation_contradiction = result.exlanation_contradiction === false || String(result.exlanation_contradiction || "").toLowerCase() === "false";
+      const question_compatibility = result.question_compatibility === true || String(result.question_compatibility || "").toLowerCase() === "true";
+      const verdict = String(result.verdict || "").toLowerCase();
+      const pass = result.pass === true && verdict === "supported" && question_compatibility && exlanation_contradiction;
+
+      if (!pass) {
+        return { valid: false, reason: `근거 감사 실패 또는 해설 모순 발생 (exlanation_contradiction=${!exlanation_contradiction})` };
+      }
+
+      const options = Array.isArray(quiz.options) ? quiz.options : [];
+      const correctIndex = options.findIndex(o => o?.is_correct === true);
+      const assessments = result.option_assessments;
+
+      if (!Array.isArray(assessments) || assessments.length !== 3) {
+        return { valid: false, reason: "보기별 감사 결과 형식 오류" };
+      }
+
+      // 복수 정답 검증: matches_question이 true인 항목이 오직 1개인지 확인
+      const matchingIndexes = assessments.filter(item => item.matches_question === true).map(item => Number(item.option_index));
+      if (matchingIndexes.length !== 1 || matchingIndexes[0] !== correctIndex) {
+        return { valid: false, reason: `복수 정답 또는 정답 매칭 오류 (유효 정답 수: ${matchingIndexes.length}개)` };
+      }
+
       return { valid: true, reason: "원문 및 인용법령 감사 통과", audit: result };
     } catch (err) {
-      // 감사 호출 실패 시에도 퀴즈 생성 흐름이 끊기지 않도록 유연하게 통과
-      return { valid: true, reason: `감사 유연 통과: ${err.message}` };
+      return { valid: false, reason: `근거 감사 호출 실패: ${err.message}` };
     }
   },
 
   async fixQuiz(quiz, article, errorReason) {
     try {
-      const raw = await this.requestMistral(PROMPTS.correction(quiz, article, errorReason), "medium");
-      if (!raw || raw.error === "[IDK]" || raw.error) return null;
+      const raw = await this.requestMistral(PROMPTS.correction(quiz, article, errorReason), "xhigh");
+      if (!raw || raw.error) return null;
       return Utils.normalizeQuiz(raw, article.num);
     } catch (err) {
       return null;
@@ -1565,7 +1432,7 @@ const QuizService = {
 
   async runValidationPipeline(initialQuiz, article, refContent) {
     let quiz = initialQuiz;
-    const maxCorrections = 1;
+    const maxCorrections = 2;
     let lastReason = "";
 
     for (let pass = 0; pass <= maxCorrections; pass++) {
@@ -1574,12 +1441,9 @@ const QuizService = {
       if (!structure.valid) {
         lastReason = `구조 검증: ${structure.reason}`;
       } else {
-        const citationCheck = validateLawArticleCitations(quiz, article, refContent);
         const audit = await this.auditQuiz(quiz, article, refContent);
-
         if (audit.valid) {
           const plaintextPkg = assembleQuizPlaintext(article, refContent, quiz);
-          console.log(`[Plaintext 패키지 생성 완료 길이: ${plaintextPkg.length}자]`);
           return {
             valid: true,
             reason: audit.reason,
@@ -1597,15 +1461,7 @@ const QuizService = {
       quiz = corrected;
     }
 
-    // 최종 통과 보장 (엄격한 검증으로 인한 무한 실패 방지)
-    const plaintextPkg = assembleQuizPlaintext(article, refContent, quiz);
-    return {
-      valid: true,
-      reason: "유연 검증 파이프라인 최종 통과",
-      quiz,
-      audit: {},
-      plaintext: plaintextPkg
-    };
+    return { valid: false, step: "audit", reason: lastReason, quiz };
   },
   
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
@@ -1616,8 +1472,6 @@ const QuizService = {
         if (!article) continue;
 
         const refContent = article.referencedContent ?? "";
-        if (!refContent && article.content.length < 30) { continue; }
-
         console.log(`[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
         const quiz = await this.generateQuiz(article);
@@ -1626,7 +1480,6 @@ const QuizService = {
         const result = await this.runValidationPipeline(quiz, article, refContent);
         if (result.valid) {
           const { explanation_answer, calcError, ...clean } = result.quiz;
-          console.log(`[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 완수 (${attempt}/${maxTries})`);
           return { ...clean, plaintextPackage: result.plaintext };
         }
       } catch (err) {
@@ -1675,19 +1528,6 @@ app.post("/api/lawquizzes/new", async (req, res) => {
     return res.json(newQuizzes);
   } catch (err) {
     return res.status(500).json({ error: "퀴즈 생성 오류", message: err?.message || "오류", serverError: true, modelTierFlag: MODEL_TIER_FLAG });
-  }
-});
-
-app.get("/api/mistral-models", async (req, res) => {
-  try {
-    const response = await axios.get("[https://api.mistral.ai/v1/models](https://api.mistral.ai/v1/models)", {
-      headers: { Authorization: `Bearer ${process.env.LAW_QUIZ_MISTRAL_KEY}` },
-      timeout: 10000,
-    });
-    const models = Array.isArray(response.data?.data) ? response.data.data.map(model => model.id).filter(Boolean) : [];
-    return res.json({ models, modelTierFlag: MODEL_TIER_FLAG });
-  } catch (err) {
-    return res.status(err?.response?.status || 500).json({ error: "모델 목록 조회 실패", serverError: true, modelTierFlag: MODEL_TIER_FLAG });
   }
 });
 
