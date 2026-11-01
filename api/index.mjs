@@ -2138,7 +2138,7 @@ if (polarity === "negative" || polarity === "positive") {
         return { ...clean, plaintextPackage: result.plaintext };
       }
     } catch(err)
-      { console.err('문법 오류로 실행되지 않았습니다.')}
+      { console.err('문법 오류로 실행되지 않았습니다.');}
     return null;
   }
 };
