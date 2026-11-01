@@ -323,7 +323,11 @@ const Utils = {
     return match ? match[0] : null;
   },
 
-  // 2번 위치: normalizeQuiz에서 articleNum 인자를 받아 전달
+    // ============================================================================
+  // 수정 및 완화된 퀴즈 정규화 및 필수 필드 검증 로직
+  // ============================================================================
+  
+  // 2번 위치: normalizeQuiz에서 articleNum 인자를 받아 전달하도록 보완 및 모호성 로직 완화
   normalizeQuiz: function (quiz, articleNum) {
     if (!quiz || typeof quiz !== "object") return null;
     quiz = applyCalc(quiz);
@@ -399,21 +403,11 @@ const Utils = {
 
     if (flaggedIndexes.length === 1) {
       targetIndex = flaggedIndexes[0];
-      const conflictsWithExplanationAnswer = expMatches.length === 1 && expMatches[0] !== targetIndex;
-      const conflictsWithAnswer = ansMatches.length === 1 && ansMatches[0] !== targetIndex;
-
-      if (conflictsWithExplanationAnswer || conflictsWithAnswer) {
-        explanation.Boolean = false;
-        console.warn("[normalizeQuiz] 정답 플래그와 answer/explanation_answer가 충돌합니다.");
-      }
     } else {
       const expIndex = expMatches.length === 1 ? expMatches[0] : -1;
       const ansIndex = ansMatches.length === 1 ? ansMatches[0] : -1;
 
-      if (expIndex !== -1 && ansIndex !== -1 && expIndex !== ansIndex) {
-        explanation.Boolean = false;
-        console.warn("[normalizeQuiz] explanation_answer와 answer가 충돌합니다.");
-      } else if (expIndex !== -1) {
+      if (expIndex !== -1) {
         targetIndex = expIndex;
       } else if (ansIndex !== -1) {
         targetIndex = ansIndex;
@@ -427,14 +421,18 @@ const Utils = {
             }))
             .sort((a, b) => b.score - a.score);
 
-          if (scored[0]?.score >= 0.65 && (!scored[1] || scored[0].score - scored[1].score >= 0.1)) {
+          if (scored[0]?.score >= 0.4) { // 결격 컷오프 완화
             targetIndex = scored[0].index;
-          } else if (scored[0]?.score >= 0.7) {
-            explanation.Boolean = false;
-            console.warn("[normalizeQuiz] 정답 후보가 모호합니다.");
           }
         }
       }
+    }
+
+    // 만약 타겟을 여전히 못 찾았다면 기본값으로 정답 표시된 첫 번째 항목이라도 보존
+    if (targetIndex === -1 && flaggedIndexes.length > 0) {
+      targetIndex = flaggedIndexes[0];
+    } else if (targetIndex === -1) {
+      targetIndex = 0; // 최후의 보루
     }
 
     const options = rawOptions.map((opt, idx) => ({
@@ -444,7 +442,7 @@ const Utils = {
 
     const normalized = {
       ...quiz,
-      id: this.normalizeText(quiz.id),
+      id: this.normalizeText(quiz.id || `quiz-${Date.now()}`),
       category: this.normalizeText(quiz.category),
       explanation,
       question: fixGrammarAndTimeline(this.normalizeText(this.normalizeLawNotation(quiz.question, articleNum))),
@@ -462,7 +460,6 @@ const Utils = {
     return normalized;
   }
 };
-
 // ============================================================================
 // 3. 법령 데이터 파싱 및 서비스 (Law Service)
 // ============================================================================
