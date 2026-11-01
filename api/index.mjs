@@ -1674,7 +1674,7 @@ const QuizService = {
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
         top_p: 0.0,
-        reasoning_effort: "high",
+        reasoning_effort: "medium",
       };  
 
       if (!isConstitution) {
