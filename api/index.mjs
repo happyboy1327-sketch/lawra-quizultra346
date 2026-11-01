@@ -19,7 +19,7 @@ console.log("FIREBASE_SERVICE_ACCOUNT_KEY:", process.env.FIREBASE_SERVICE_ACCOUN
 
 const OC_USER_ID = process.env.LAW_GOV_OC;
 const MODEL = 'ministral-14b-latest';
-const MODEL_TIER_FLAG = { modelChanged: false, tier: 'ministral-8b-latest', serverError: true };
+const MODEL_TIER_FLAG = { modelChanged: false, tier: 'ministral-14b-latest', serverError: true };
 const LAW_API_URL = "https://www.law.go.kr/DRF/lawService.do";
 const MISTRAL_MIN_INTERVAL_MS = 800;
 
