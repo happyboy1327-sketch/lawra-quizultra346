@@ -2137,8 +2137,8 @@ if (polarity === "negative" || polarity === "positive") {
         const { explanation_answer, calcError, ...clean } = result.quiz;
         return { ...clean, plaintextPackage: result.plaintext };
       }
-    } catch(err) { 
-        console.err(`문법 오류로 실행되지 않았습니다.`);
+    } catch (err) { 
+        console.err(`문법 오류로 실행되지 않았습니다.`, err.message);
       }
     return null;
   }
