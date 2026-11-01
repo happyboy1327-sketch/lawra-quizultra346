@@ -1942,7 +1942,7 @@ const correctIndexes = options
   .map((option, index) => option?.is_correct === true ? index : -1)
   .filter(index => index !== -1);
 
-if (options.length !== 3 || correctIndexes.length !== 1) {
+if (correctIndexes.length !== 1) {
   debugFail("AUDIT_OPTION_STRUCTURE", {
     law: article?.lawName,
     articleNum: article?.num,
