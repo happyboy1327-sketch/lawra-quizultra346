@@ -1704,7 +1704,7 @@ const QuizService = {
       if ((isEmptyQuiz || isErrorResponse) && isConstitution) {
         if (retriesLeft > 0) {
           await Utils.sleep(1000);
-          return this.generateQuiz(article, retriesLeft - 1);
+          return this.(article, retriesLeft - 1);
         }
         return null;
       }
@@ -2117,6 +2117,7 @@ if (polarity === "negative" || polarity === "positive") {
 },
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
     for (let attempt = 1; attempt <= maxTries; attempt++) {
+      try {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
       const article = await LawService.fetchRandomArticle(law);
       if (!article) continue;
@@ -2136,6 +2137,8 @@ if (polarity === "negative" || polarity === "positive") {
         const { explanation_answer, calcError, ...clean } = result.quiz;
         return { ...clean, plaintextPackage: result.plaintext };
       }
+    } catch(e)
+      { console.log('문법 오류로 실행되지 않았습니다.')
     }
     return null;
   }
