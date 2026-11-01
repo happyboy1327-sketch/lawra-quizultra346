@@ -2116,60 +2116,34 @@ if (polarity === "negative" || polarity === "positive") {
   }
 },
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    try {
+    for (let attempt = 1; attempt <= maxTries; attempt++) {
+      try {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
       const article = await LawService.fetchRandomArticle(law);
-
-      if (!article) {
-        console.warn(`[슬롯 ${slotIndex}] 조문 가져오기 실패 (${attempt}/${maxTries})`);
-        continue;
-      }
+      if (!article) continue;
 
       const refContent = article.referencedContent ?? "";
-
-      if (!refContent && article.content.length < 37) {
-        console.warn(`[슬롯 ${slotIndex}] 원문이 너무 짧아 건너뜀`);
-        continue;
-      }
-
-      console.log(
-        `\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`
-      );
+      if (!refContent && article.content.length < 37) { console.warn(`  └ 원문이 너무 짧고 참조 없음, 건너뜀: ${law.lawName} ${article.num}`); continue; }
+      console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
-
       if (!quiz) {
         console.warn(`[슬롯 ${slotIndex}] 퀴즈 생성 실패`);
         continue;
       }
 
       const result = await this.runValidationPipeline(quiz, article, refContent);
-
       if (result.valid) {
         const { explanation_answer, calcError, ...clean } = result.quiz;
-
-        return {
-          ...clean,
-          plaintextPackage: result.plaintext
-        };
+        return { ...clean, plaintextPackage: result.plaintext };
       }
-
-      console.warn(
-        `[슬롯 ${slotIndex}] 검증 실패 (${attempt}/${maxTries})`
-      );
-
-    } catch (err) {
-      console.error(
-        `[슬롯 ${slotIndex}] 문법 문제다. 실행 오류 (${attempt}/${maxTries}):`,
-        err
-      );
+    } catch (err) { 
+        console.error("문법 오류로 실행되지 않았습니다.");
+      }
     }
-  }
-
-  console.error(`[슬롯 ${slotIndex}] 최대 시도 횟수 초과. 최종 실패`);
-  return null;
-}
+    console.warn(`[슬롯 ${slotIndex}] 모든 시도했지만 퀴즈 생성 실패`);
+    return null;
+  };
 
 // ============================================================================
 // 6. API 라우팅 (API Routes)
