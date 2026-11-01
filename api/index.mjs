@@ -1612,7 +1612,7 @@ function validateLawArticleCitations(quiz, article, refContent, auditResult = nu
           compactClaim.includes(`${citation.lawKey}${citation.articleNum}`);
       });
       const supported = related.length > 0 && related.some(item =>
-        getBestEvidenceSimilarity(item?.evidence_quote, sourceContent) >= 0.9
+        getBestEvidenceSimilarity(item?.evidence_quote, sourceContent) >= 0.66
       );
       if (!supported) {
         return {
@@ -1662,7 +1662,7 @@ const QuizService = {
 
     const systemInstruction = !isConstitution
       ? `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라.\n{ "error": "[IDK]" }\n`
-      : `[SYSTEM 지침]\n헌법 퀴즈는 반드시 완성하라.idk 그딴거 없다.\n`;
+      : `[SYSTEM 지침]\n헌법 퀴즈는 반드시 완수하라.\n`;
 
     const finalPrompt = systemInstruction + userPrompt;
 
