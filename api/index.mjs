@@ -2116,14 +2116,17 @@ if (polarity === "negative" || polarity === "positive") {
   }
 },
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
     try {
-    for (let attempt = 1; attempt <= maxTries; attempt++) {
       const law = VALID_LAW_IDS[Math.floor(Math.random() * VALID_LAW_IDS.length)];
       const article = await LawService.fetchRandomArticle(law);
       if (!article) continue;
 
       const refContent = article.referencedContent ?? "";
-      if (!refContent && article.content.length < 37) { console.warn(`  └ 원문이 너무 짧고 참조 없음, 건너뜀: ${law.lawName} ${article.num}`); continue; }
+      if (!refContent && article.content.length < 37) { 
+        console.warn(`  └ 원문이 너무 짧고 참조 없음, 건너뜀: ${law.lawName} ${article.num}`); 
+        continue; 
+      }
       console.log(`[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
@@ -2137,12 +2140,17 @@ if (polarity === "negative" || polarity === "positive") {
         const { explanation_answer, calcError, ...clean } = result.quiz;
         return { ...clean, plaintextPackage: result.plaintext };
       }
+    } catch (err) {
+      // API 실패나 파싱 에러가 발생해도 로그만 남기고 다음 attempt(시도)로 넘어감
+      console.error(`[슬롯 ${slotIndex}] 시도 (${attempt}/${maxTries}) 중 오류 발생:`, err);
     }
-    return null;
-  } catch (err) {
-    console.error('실행 오류');
-    }
- };
+  }
+  
+  // 지정된 maxTries를 모두 돌았음에도 성공(return)하지 못한 경우
+  console.warn(`[슬롯 ${slotIndex}] ${maxTries}회 시도했으나 유효한 퀴즈 생성 실패`);
+  return null;
+};
+
 
 // ============================================================================
 // 6. API 라우팅 (API Routes)
