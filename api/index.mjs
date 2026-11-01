@@ -1677,9 +1677,9 @@ const QuizService = {
         reasoning_effort: "medium",
       };  
 
-      if (!isConstitution) {
+      /*if (!isConstitution) {
         requestOptions.stop = ["[IDK]"];
-      }
+      }*/
 
       const response = await client.chat.complete(requestOptions);
       let contentRes = response?.choices?.[0]?.message?.content;
