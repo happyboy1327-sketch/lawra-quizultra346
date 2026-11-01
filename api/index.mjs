@@ -2145,11 +2145,10 @@ if (polarity === "negative" || polarity === "positive") {
       console.error(`[슬롯 ${slotIndex}] 시도 (${attempt}/${maxTries}) 중 오류 발생:`, err);
     }
   }
-  
   // 지정된 maxTries를 모두 돌았음에도 성공(return)하지 못한 경우
   console.warn(`[슬롯 ${slotIndex}] ${maxTries}회 시도했으나 유효한 퀴즈 생성 실패`);
   return null;
-};
+}
 
 
 // ============================================================================
