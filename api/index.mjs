@@ -2138,10 +2138,11 @@ if (polarity === "negative" || polarity === "positive") {
         return { ...clean, plaintextPackage: result.plaintext };
       }
     } catch (err) { 
-        console.err(`문법 오류로 실행되지 않았습니다.`, err.message);
+        console.error(`문법 오류로 실행되지 않았습니다.`, err.message);
       }
+    }
+    console.error(`[슬롯 ${slotIndex}] 최대 시도 횟수 초과. 최종 실패`);
     return null;
-  }
 }
 
 // ============================================================================
