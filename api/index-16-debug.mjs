@@ -12,8 +12,8 @@ dotenv.config();
 // ============================================================================
 // QUIZ DEBUG
 // ============================================================================
-const DEBUG_QUIZ = false;
-const DEBUG_MAX_LEN = 12000;
+const DEBUG_QUIZ = true;
+const DEBUG_MAX_LEN = 6000;
 
 function debugLog(label, data, maxLen = DEBUG_MAX_LEN) {
   if (!DEBUG_QUIZ) return;
