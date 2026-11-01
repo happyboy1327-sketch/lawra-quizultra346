@@ -1378,7 +1378,7 @@ function getTextSimilarity(a, b) {
 // 긴 원문 전체와 비교하지 않고, 실제 조문 문장 단위에서 인용문과 가장 가까운 구간을 찾는다.
 function getBestEvidenceSimilarity(quote, source) {
   const q = normalizeEvidenceText(quote);
-  if (!q || q.length < 5) return 0;
+  if (!q || q.length < 4) return 0;
   const normalizedSource = normalizeEvidenceText(source);
   if (normalizedSource.includes(q)) return 1;
 
@@ -1398,7 +1398,7 @@ function getBestEvidenceSimilarity(quote, source) {
     if (candidate.includes(q)) return 1;
     if (Math.abs(candidate.length - q.length) <= maxDistance) {
       best = Math.max(best, getTextSimilarity(q, candidate));
-      if (best >= 0.9) return best;
+      if (best >= 0.66) return best;
       continue;
     }
     if (candidate.length <= q.length) continue;
@@ -1415,7 +1415,7 @@ function getBestEvidenceSimilarity(quote, source) {
           for (let length = minLength; length <= maxLength; length++) {
             const score = getTextSimilarity(q, candidate.slice(start, start + length));
             if (score > best) best = score;
-            if (best >= 0.9) return best;
+            if (best >= 0.67) return best;
           }
         }
         sourceIndex = candidate.indexOf(anchor, sourceIndex + 1);
