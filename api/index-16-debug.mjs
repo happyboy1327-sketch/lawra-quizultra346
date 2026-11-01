@@ -427,7 +427,7 @@ const Utils = {
             }))
             .sort((a, b) => b.score - a.score);
 
-          if (scored[0]?.score >= 0.7 && (!scored[1] || scored[0].score - scored[1].score >= 0.08)) {
+          if (scored[0]?.score >= 0.65 && (!scored[1] || scored[0].score - scored[1].score >= 0.1)) {
             targetIndex = scored[0].index;
           } else if (scored[0]?.score >= 0.7) {
             explanation.Boolean = false;
@@ -1031,7 +1031,7 @@ const randomOptionsTemplate = () => {
 const PROMPTS = {
   generate: (article, content, refContent) => `
 너는 엄격한 논리로 파고드는 전 범위의 법률 전문가이다. 다음 한국 법령 조문 및 참조/인용 조문을 읽고 정답 위치가 다른 객관식 3지선다의 퀴즈 1개를 한국어 문법에 알맞게 만들어. **영어는 안된다. 단, 조문 원문의 한자는 한글로 변환하여 사용하거나, 괄호 안의 한자는 제거하라.**
-***출제자는 날짜 및 숫자 계산에 신중해야 하며, 항상 최선을 다해야 한다.***
+***출제자는 날짜 및 숫자 계산에 신중해야 하며, 항상 최선을 다해야 한다.*** 반드시 3지선다형 퀴즈!!!!!!!!!!!
 
 법령명: ${article.lawName}
 조문번호: ${article.num}
@@ -1243,7 +1243,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
   "options": [
    ${randomOptionsTemplate()}
   ],
-  "answer": "[정답 텍스트]",
+  "answer": "[정답 내용이면서 질문의 전제 및 진위에 부합하며 질문 내에 언급된 인물의 사실 및 사항.]",
   "timer_sec": 15
 }`,
 
@@ -1347,10 +1347,10 @@ ${JSON.stringify(quiz, null, 2)}
 function detectQuestionPolarity(question) {
   const q = String(question ?? "").replace(/\\s+/g, "");
   const negativePatterns = [
-    /(?:옳지|맞지|틀린|잘못된|부적절한|적절하지않은|타당하지않은|해당하지않는|아닌)것/,
+    /(?:옳지|맞지|틀린|잘못된|부적절한|적절하지 않은|타당하지 않은|해당하지 않는|아닌)것/,
     /(?:할|될|정할|적용할|인정할|허용할|구성할|포함할)수없는(?:것|사항|경우)?/,
-    /(?:허용되지않는|금지되는|위반되는|배제되는|제외되는)것/,
-    /(?:불가능한|허용되지않는)사항/
+    /(?:허용되지 않는|금지되는|위반되는|배제되는|제외되는)것/,
+    /(?:불가능한|허용되지 않는)사항/
   ];
   if (negativePatterns.some(pattern => pattern.test(q))) return "negative";
 
@@ -1708,8 +1708,8 @@ const QuizService = {
     const userPrompt = PROMPTS.generate(article, content, refContent);
 
     const systemInstruction = !isConstitution
-      ? `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라.\n{ "error": "[IDK]" }\n`
-      : `[SYSTEM 지침]\n헌법 퀴즈는 반드시 완수하라.\n`;
+      ? `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라. 반드시 3지선다형으로만 낼것.\n{ "error": "[IDK]" }\n`
+      : `[SYSTEM 지침]\n헌법 퀴즈는 반드시 완수하라. 반드시 3지선다형으로만 낼것.\n`;
 
     const finalPrompt = systemInstruction + userPrompt;
 
@@ -1964,7 +1964,7 @@ function detectExplanationAnswerMismatch(quiz) {
       String(s || "").replace(/[\s`*._,<>!?()[\]]/g, "").trim();
 
     const simAnswerAndOpt = getSimilarity(cleanStrForSim(correctOptionText), cleanStrForSim(answerText));
-    if (simAnswerAndOpt < 0.85) {
+    if (simAnswerAndOpt < 0.55) {
       return {
         valid: false,
         reason: `answer와 is_correct=true인 보기 텍스트의 유사도가 너무 낮음 (유사도: ${simAnswerAndOpt.toFixed(2)})`,
