@@ -1704,7 +1704,7 @@ const QuizService = {
       if ((isEmptyQuiz || isErrorResponse) && isConstitution) {
         if (retriesLeft > 0) {
           await Utils.sleep(1000);
-          return this.(article, retriesLeft - 1);
+          return this.generateQuiz(article, retriesLeft - 1);
         }
         return null;
       }
