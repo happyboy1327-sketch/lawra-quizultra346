@@ -1892,7 +1892,7 @@ function detectExplanationAnswerMismatch(quiz) {
 
   // [1단계] 전체 유사도 검사
   const sim = getSimilarity(answerText, expText);
-  if (sim < 0.83) {
+  if (sim < 0.53) {
     return {
       mismatch: true,
       reason: `answer와 explanation_answer 불일치 (유사도: ${sim.toFixed(2)})`,
