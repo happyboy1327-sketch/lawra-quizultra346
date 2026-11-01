@@ -2124,7 +2124,7 @@ if (polarity === "negative" || polarity === "positive") {
 
       const refContent = article.referencedContent ?? "";
       if (!refContent && article.content.length < 37) { console.warn(`  └ 원문이 너무 짧고 참조 없음, 건너뜀: ${law.lawName} ${article.num}`); continue; }
-      console.log(`\n[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
+      console.log(`[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 시도 (${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
 
       const quiz = await this.generateQuiz(article);
       if (!quiz) {
@@ -2142,7 +2142,7 @@ if (polarity === "negative" || polarity === "positive") {
   } catch (err) {
     console.error('실행 오류');
     }
- }
+ };
 
 // ============================================================================
 // 6. API 라우팅 (API Routes)
