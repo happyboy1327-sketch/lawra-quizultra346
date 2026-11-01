@@ -1023,8 +1023,9 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 4. 보기 세 개는 각각 독립된 한 문장으로 작성한다.
 5. 세 보기의 문장 구조와 종결 형식을 통일한다.
 6. 예외, 단서, 요건, 조건이 있다면 절대로 생략하거나 혼동하지 않는다.
+6-1. 조례·규칙 등에 위임된 사항을 출제할 때에는 원문에 명시된 위임 대상과 범위를 그대로 구분한다. "기타 사항" 또는 "그 밖에 필요한 사항"이라는 표현만으로 법령에 없는 위임 범위를 만들어 내지 않는다. 위임 주체의 권한과 회의의 심의·확정 대상, 회의의 구성·운영 사항을 혼동하지 않는다.
 7. 해설은 3단계 단문 구조([결론], [법령 근거], [사안 대입])로만 작성한다. 질문에 사례와 가명이 없다면 [사안 대입]은 완전히 생략해야만 한다.
-8. **[부정문/예외형 질문 처리 규칙]** 질문이 "~가 아닌 것은?", "~에 해당하지 않는 것은?" 등 부정형(Negative Polarity)인 경우, 정답(is_correct: true)인 보기는 **법령에 부합하지 않거나 해당하지 않는 거짓(False)인 내용**이어야 하고, 나머지 오답 보기(is_correct: false)들은 **법령에 부합하는 참(True)인 내용**이어야 한다.
+8. **[부정문/불가능·금지형 질문 처리 규칙]** 질문이 "~가 아닌 것은?", "~에 해당하지 않는 것은?", "~할 수 없는 것은?", "~로 정할 수 없는 것은?", "~할 수 없는 사항은?", "허용되지 않는 것은?", "금지되는 것은?", "위반되는 것은?"처럼 부정·불가능·금지 대상을 고르는 형식이면 negative 질문이다. 이때 각 보기를 독립적인 명제 또는 법적 가능성 주장으로 평가하고, 정답(is_correct: true)은 법령상 성립하지 않는 거짓(False)인 주장이어야 한다. 나머지 두 보기는 법령상 성립하는 참(True)인 주장이어야 한다. 질문이 "~할 수 있는 것은?"처럼 가능·허용 대상을 고르면 positive다. 단순히 행위나 법적 효과 자체를 묻고 보기의 참·거짓을 고르는 구조가 아니면 direct다. 질문의 표현만 보고 기계적으로 분류하지 말고 질문이 요구하는 논리 방향을 먼저 확정하라.
 
 
 ### [일반 사실 추론 능력 강화 프로토콜]
@@ -1225,7 +1226,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 너는 생성된 법률 퀴즈의 근거와 추론을 감사하는 검토자다. 아래 제공된 원문 및 인용법령을 근거로 퀴즈의 핵심 주장과 결론이 실제 뒷받침되는지 검토하라.
 또한 법령에 없는 일반 사실이 포함되어 있다면 그 타당성을 검증하되, 일반 사실이 없으면 통과(Pass)시키라.
 
-특히 질문이 부정문("~가 아닌 것은?", "~에 해당하지 않는 것은?")인 경우 question_polarity는 negative로 설정해야 하고, 정답 선택지(is_correct: true)의 statement_truth가 법령에 반하는 "false"이며 오답 선택지들의 statement_truth가 "true"인지 엄격히 검증하라.
+특히 "~할 수 없는 것은?", "~로 정할 수 없는 것은?", "~할 수 없는 사항은?", "허용되지 않는 것은?", "금지되는 것은?"도 negative 질문으로 분류하라. negative 질문이면 정답 선택지의 statement_truth는 "false", 나머지 두 선택지의 statement_truth는 "true"여야 한다. "~할 수 있는 것은?", "~로 정할 수 있는 것은?"은 positive로 분류하고 정답은 "true", 나머지는 "false"여야 한다.
 
 감사 절차:
 [선택지 추론 프로토콜 - 세 보기 모두 수행]
@@ -1248,6 +1249,7 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 2. 정답 선택지의 각 법적 주장을 분리하고, 각 주장에 직접 근거가 되는 원문 구절을 연결한다. 질문에서 이유가 되는 정답을 물었는데 질문의 내용을 그대로 복사붙여넣기 한 경우 unsupported이다.
 3. 인용 조문이 실제 제공 원문에 있는지, 그 조문이 주장된 법적 효과를 실제로 뒷받침하는지 확인한다. 조문이 존재한다는 사실만으로 그 해석이 맞다고 판정하지 않는다.
 4. 예외·단서·위임 규정·누적 요건이 있으면 각각의 적용 범위와 다른 법적 효과를 구분한다.
+4-1. 조례·규칙·대통령령 등에 위임된 사항을 묻는 경우, 위임 근거 조문에서 실제로 위임한 대상과 범위를 먼저 특정한다. "그 밖에 필요한 사항", "기타 사항" 등의 표현이 있다는 이유만으로 해당 사안이 위임 범위에 포함된다고 추정하지 않는다. 위임 주체의 권한, 심의·의결 대상, 구성·운영 사항, 피해지원 사항을 서로 바꾸어 해석하지 말고, 각 선택지별로 위임 근거의 문언과 직접 대조한다.
 ★ [중요 - 부정문 출제 가이드] 만약 질문이 "틀린 것", "위반되는 행위", "올바르지 않은 것"을 묻는 형식이라면, 정답지(is_correct: true인 선택지)는 당연히 법령 원문과 상충되거나 틀린 사실을 서술해야 정상입니다. 그러하기 때문에 틀린 것을 묻고, 정답지(is_correct: true인 선택지)에 틀린 사실이 들어가있으면 'supported'로 판정하십시오.  
 ★ 법률상 간주·의제 규정의 우선 적용: 법률이 특정인을 특정 조항의 적용에서 "공무원으로 본다"고 명시한 경우, 그 적용 범위에서는 해당 인물을 형법상 공무원으로 취급해야 한다. 해당 범죄의 일반적인 신분요건이 공무원이라는 이유만으로 의제 대상자에게 그 조항이 적용되지 않는다고 판단해서는 안 된다. 법률이 적용 대상으로 열거한 조항은 열거된 범위 그대로 모두 적용 대상으로 검토한다.
 ★ 조문 범위와 개별 조항의 모순 검사: "제A조부터 제B조까지의 규정을 적용한다"고 인정한 뒤 그 범위에 포함된 특정 조항(예: 제B조)은 적용되지 않는다고 결론 내리면 논리적 모순이다. 별도의 명시적 예외 규정이 원문에 확인되지 않는 한 exlanation_contradiction는 true이며, unsupported 및 pass=false로 판정한다.
@@ -1261,8 +1263,10 @@ ${refContent ? `[참조 및 인용 조문 내용]\n${refContent}\n` : ""}
 세 보기 모두 빠짐없이 각각 평가한다.
 reasoning에는 결론만 쓰지 말고 주체·객체·행위의 의미,
 배경지식, 사실관계의 연결 및 법률 검증 여부를 구체적으로 설명한다.
-12. 질문이 요구하는 논리 방향을 먼저 분류한다. question_polarity는 "negative", "positive", "direct" 중 하나다. "옳지 않은 것", "틀린 것", "잘못된 것", "적절하지 않은 것", "해당하지 않는 것", "타당하지 않은 것"처럼 보기의 법률상 주장이 틀린 것을 고르는 질문은 negative다. 
-"옳은 것", "맞는 것", "타당한 것", "적절한 것"처럼 보기의 법률상 주장이 맞는 것을 고르는 질문은 positive다. "어떤 행위가 금지되는가", "무엇을 할 수 없는가", "어떤 행위가 위반인가"처럼 행위나 법적 효과 자체를 직접 묻는 질문은 direct다. 질문이 모호하거나 양방향으로 해석되면 pass=false다.
+12. 질문이 요구하는 논리 방향을 먼저 분류한다. question_polarity는 "negative", "positive", "direct" 중 하나다.
+"옳지 않은 것", "틀린 것", "잘못된 것", "적절하지 않은 것", "해당하지 않는 것", "타당하지 않은 것", "할 수 없는 것", "정할 수 없는 것", "적용할 수 없는 것", "허용되지 않는 것", "금지되는 것", "위반되는 것"처럼 보기 중 성립하지 않는 주장을 고르는 질문은 negative다. 따라서 "조례로 정할 수 없는 것은?"은 반드시 negative다.
+"옳은 것", "맞는 것", "타당한 것", "적절한 것", "할 수 있는 것", "정할 수 있는 것", "적용할 수 있는 것"처럼 성립하는 주장을 고르는 질문은 positive다.
+"어떤 행위가 금지되는가", "무엇을 할 수 없는가"처럼 선택지의 명제 진위를 고르는 구조가 아니라 법적 효과 자체를 직접 묻는 질문만 direct다. 질문이 모호하거나 양방향으로 해석되면 pass=false다.
 13. ***is_correct=true인 보기와 answer, explanation_answer가 동일한 보기 하나를 찾고, 그 보기가 유일하게 matches_question=true인지 확인한다. 
 선택된 정답이 질문의 논리 방향과 불일치하거나, matches_question=true인 보기가 0개 또는 2개 이상이면 pass=false다. is_correct 플래그나 기존 해설의 결론을 정답의 진실성에 대한 증거로 취급하지 마라. 
 polarity가 negative이면 statement_truth=false인 보기만 matches_question=true여야 한다. positive이면 statement_truth=true인 보기만 matches_question=true여야 한다. direct이면 문장 자체의 진위와 별도로 질문에 직접 답하는지 판단한다.***
@@ -1270,7 +1274,7 @@ polarity가 negative이면 statement_truth=false인 보기만 matches_question=t
 15. ★호 번호 정합성 검사: 조문에 다수의 호가 존재하는 경우, 질문과 정답에서 요구하는 법적 주체와 요건이 원문의 해당 호와 정확히 일치하는지 확인하십시오. 호 번호나 주체가 뒤바뀐 경우 즉시 unsupported 및 pass=false로 판정하십시오.
 
 판정 기준:
-- supported: 중요한 주장마다 원문 근거와 타당한 추론이 있고, 핵심 누락이나 모순이 없고 예외사항이나 단서 누락이 없다. 또한, 세 보기의 진위가 모두 타당하다고 검증됨.
+- supported: 세 보기 각각의 법적 주장이 원문 또는 제공된 참조 조문으로 검증되고, 질문의 논리 방향에 맞는 정답이 정확히 하나이며, 핵심 누락·모순·예외사항 누락이 없다. negative 질문에서는 정답 보기만 false이고 나머지는 true여야 한다. positive 질문에서는 정답 보기만 true이고 나머지는 false여야 한다.
 - unsupported: 원문과 충돌하거나, 원문이 뒷받침하지 않는 결론·인용·추론이 있다. 또한, 법적 주체와 예외 단서가 맞지 않다.
 - insufficient: 주어진 원문/사실만으로 결론과 보기의 진위를 확정할 수 없다.
 
@@ -1314,6 +1318,24 @@ ${JSON.stringify(quiz, null, 2)}
 기존과 동일한 순수 JSON 형식으로만 출력하십시오.
 `
 };
+
+function detectQuestionPolarity(question) {
+  const q = String(question ?? "").replace(/\\s+/g, "");
+  const negativePatterns = [
+    /(?:옳지|맞지|틀린|잘못된|부적절한|적절하지않은|타당하지않은|해당하지않는|아닌)것/,
+    /(?:할|될|정할|적용할|인정할|허용할|구성할|포함할)수없는(?:것|사항|경우)?/,
+    /(?:허용되지않는|금지되는|위반되는|배제되는|제외되는)것/,
+    /(?:불가능한|허용되지않는)사항/
+  ];
+  if (negativePatterns.some(pattern => pattern.test(q))) return "negative";
+
+  const positivePatterns = [
+    /(?:옳은|맞는|타당한|적절한|해당하는)것/,
+    /(?:할|될|정할|적용할|인정할|허용할|구성할|포함할)수있는(?:것|사항|경우)?/
+  ];
+  if (positivePatterns.some(pattern => pattern.test(q))) return "positive";
+  return "direct";
+}
 
 function normalizeLawCitationText(value) {
   return String(value ?? "").replace(/\s+/g, "").replace(/[“”‘’]/g, "");
@@ -1966,6 +1988,7 @@ if (
 
 // 부정문·긍정문 질문은 보기의 진위와 정답 선택 방향도 대조한다.
 const polarity = String(result.question_polarity || "").toLowerCase();
+const detectedPolarity = detectQuestionPolarity(quiz.question);
 
 if (!["negative", "positive", "direct"].includes(polarity)) {
   return {
@@ -1975,22 +1998,37 @@ if (!["negative", "positive", "direct"].includes(polarity)) {
   };
 }
 
+if (polarity !== detectedPolarity) {
+  return {
+    valid: false,
+    reason: `질문 문구와 감사 모델의 논리 방향 분류 불일치 (질문=${detectedPolarity}, 감사=${polarity})`,
+    audit: result
+  };
+}
+
+const truthValue = value =>
+  value === true || String(value).toLowerCase() === "true" ? "true" :
+  value === false || String(value).toLowerCase() === "false" ? "false" : "unknown";
+
 if (polarity === "negative" || polarity === "positive") {
-  const expectedTruth = polarity === "negative" ? "false" : "true";
+  const expectedCorrectTruth = polarity === "negative" ? "false" : "true";
+  const expectedWrongTruth = polarity === "negative" ? "true" : "false";
 
-  const truthValue = value =>
-    value === true || value === "true" ? "true" : "false";
-
-  if (
-    truthValue(assessments[correctIndex].statement_truth) !== expectedTruth ||
-    assessments.some((item, index) =>
-      item.matches_question &&
-      truthValue(item.statement_truth) !== expectedTruth
-    )
-  ) {
+  if (truthValue(assessments[correctIndex].statement_truth) !== expectedCorrectTruth) {
     return {
       valid: false,
       reason: `질문 방향과 정답 보기의 진위 불일치 (polarity=${polarity})`,
+      audit: result
+    };
+  }
+
+  const invalidTruthIndex = assessments.findIndex((item, index) =>
+    index !== correctIndex && truthValue(item.statement_truth) !== expectedWrongTruth
+  );
+  if (invalidTruthIndex !== -1) {
+    return {
+      valid: false,
+      reason: `오답 보기 ${invalidTruthIndex + 1}번의 진위가 질문 방향과 일치하지 않음 (polarity=${polarity})`,
       audit: result
     };
   }
@@ -2000,53 +2038,33 @@ if (polarity === "negative" || polarity === "positive") {
           result.claim_evidence.some((x) => !x?.claim || !x?.evidence_quote || !x?.reasoning)) {
         return { valid: false, reason: "감사 응답에 주장-원문근거-추론 연결이 충분히 제시되지 않음", audit: result };
       }
-      // 감사자가 제시한 인용이 실제 제공 원문에 존재하는지 일반적으로 확인한다.
-      // 특정 법령·조문 패턴을 하드코딩하지 않는다.
-      const getSimilarity = (s1, s2) => {
-      const longer = s1.length > s2.length ? s1 : s2;
-      if (longer.length === 0) return 1.0;
-      const costs = [];
-      for (let i = 0; i <= s1.length; i++) {
-        let lastValue = i;
-        for (let j = 0; j <= s2.length; j++) {
-          if (i === 0) {
-            costs[j] = j;
-          } else if (j > 0) {
-            let newValue = costs[j - 1];
-            if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-              newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-            }
-            costs[j - 1] = lastValue;
-            lastValue = newValue;
-          }
-        }
-        if (i > 0) costs[s2.length] = lastValue;
+      // 각 보기와 핵심 주장에 제시된 근거 인용을 제공 원문에서 직접 확인한다.
+      // 원문에 없는 인용을 경고만 남기고 통과시키지 않는다.
+      const evidenceSource = `${sourceText}\n${String(refContent || "")}`;
+
+      const unsupportedOptionEvidence = assessments
+        .filter(item => getBestEvidenceSimilarity(item.evidence_quote, evidenceSource) < 0.9)
+        .map(item => `보기 ${Number(item.option_index) + 1}: ${String(item.evidence_quote).slice(0, 80)}`);
+
+      if (unsupportedOptionEvidence.length) {
+        return {
+          valid: false,
+          reason: `보기별 직접 근거를 원문에서 확인할 수 없음: ${unsupportedOptionEvidence.join(" | ")}`,
+          audit: result
+        };
       }
-      return (longer.length - costs[s2.length]) / longer.length;
-    };
-      // app.js 내 auditQuiz 함수 내부의 normalizeQuote와 매칭 로직 교체
-const normalizeQuote = (value) => 
-  String(value || "")
-    .replace(/[^가-힣a-zA-Z0-9]/g, "") // 💡 공백, 특수문자, 원문자, 괄호 등 싹 다 제거하고 순수 텍스트만 추출
-    .trim();
 
-const sourceNormalized = normalizeQuote(`${sourceText}\n${refContent || ""}`);
+      const unsupportedClaimEvidence = result.claim_evidence
+        .filter(item => getBestEvidenceSimilarity(item.evidence_quote, evidenceSource) < 0.9)
+        .map(item => String(item.evidence_quote).slice(0, 80));
 
-const unsupportedQuotes = result.claim_evidence
-  .filter(item => {
-    const q = normalizeQuote(item.evidence_quote);
-    if (!q || q.length < 5) return false; // 너무 짧은 인용구는 패스
-    if (sourceNormalized.includes(q)) return false;
-    if (q.includes(sourceNormalized)) return false;
-    return getSimilarity(q, sourceNormalized) < 0.78; // 70% 글자 유사도 가드
-  })
-  .map(item => String(item.evidence_quote).slice(0, 100));
-
-if (unsupportedQuotes.length) {
-  // 💡 완전히 터트리지 말고, 로그만 남기거나 가드를 대폭 완화합니다.
-  console.warn(`[⚠️ 감사 인용 가드 완화] 인용문 미스매치 발생했으나 파이프라인 진행: ${unsupportedQuotes.join(" | ")}`);
-  // return { valid: false, reason: `감사 인용문 미발견: ${unsupportedQuotes.join(" | ")}`, audit: result }; // 이 줄을 주석 처리하여 무조건 탈락하는 것을 방지
-}
+      if (unsupportedClaimEvidence.length) {
+        return {
+          valid: false,
+          reason: `주장 근거 인용을 제공 원문에서 확인할 수 없음: ${unsupportedClaimEvidence.join(" | ")}`,
+          audit: result
+        };
+      }
 
       return { valid: true, reason: "원문 및 인용법령 감사 통과", audit: result };
     } catch (err) {
