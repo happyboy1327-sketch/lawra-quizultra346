@@ -1425,6 +1425,9 @@ const QuizService = {
     if (correct.length !== 1) {
       return { valid: false, reason: `정답 표시는 정확히 하나여야 함 (현재 ${correct.length}개 - 복수 정답 불가)` };
     }
+    if (correct[0].text.trim() !== quiz.answer.trim()) {
+      return { valid: false, reason: "answer와 is_correct=true인 보기 텍스트가 불일치" };
+    }
     if (quiz.calcError) return { valid: false, reason: String(quiz.calcError) };
     return { valid: true };
   },
