@@ -7,7 +7,7 @@
     }
   ],
   "functions": {
-    "api/index.mjs": {
+    "api/index-16-debug.mjs": {
       "maxDuration": 300
     }
   }
