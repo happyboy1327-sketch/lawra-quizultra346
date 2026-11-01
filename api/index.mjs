@@ -2043,7 +2043,7 @@ if (polarity === "negative" || polarity === "positive") {
       const evidenceSource = `${sourceText}\n${String(refContent || "")}`;
 
       const unsupportedOptionEvidence = assessments
-        .filter(item => getBestEvidenceSimilarity(item.evidence_quote, evidenceSource) < 0.9)
+        .filter(item => getBestEvidenceSimilarity(item.evidence_quote, evidenceSource) < 0.75)
         .map(item => `보기 ${Number(item.option_index) + 1}: ${String(item.evidence_quote).slice(0, 80)}`);
 
       if (unsupportedOptionEvidence.length) {
@@ -2055,7 +2055,7 @@ if (polarity === "negative" || polarity === "positive") {
       }
 
       const unsupportedClaimEvidence = result.claim_evidence
-        .filter(item => getBestEvidenceSimilarity(item.evidence_quote, evidenceSource) < 0.9)
+        .filter(item => getBestEvidenceSimilarity(item.evidence_quote, evidenceSource) < 0.67)
         .map(item => String(item.evidence_quote).slice(0, 80));
 
       if (unsupportedClaimEvidence.length) {
