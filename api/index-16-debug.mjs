@@ -1476,7 +1476,9 @@ const QuizService = {
         return { valid: false, reason: `복수 정답 또는 정답 매칭 오류 (유효 정답 수: ${matchingIndexes.length}개)` };
       }
 
-      const polarity = String(result.question_polarity || "").toLowerCase();
+      // 부정문·긍정문 질문은 보기의 진위와 정답 선택 방향도 대조한다.
+const polarity = String(result.question_polarity || "").toLowerCase();
+const detectedPolarity = detectQuestionPolarity(quiz.question);
 
 if (!["negative", "positive", "direct"].includes(polarity)) {
   return {
@@ -1485,6 +1487,15 @@ if (!["negative", "positive", "direct"].includes(polarity)) {
     audit: result
   };
 }
+
+if (polarity !== detectedPolarity) {
+  return {
+    valid: false,
+    reason: `질문 문구와 감사 모델의 논리 방향 분류 불일치 (질문=${detectedPolarity}, 감사=${polarity})`,
+    audit: result
+  };
+}
+      
 
 if (polarity === "negative" || polarity === "positive") {
   const expectedTruth = polarity === "negative" ? "false" : "true";
