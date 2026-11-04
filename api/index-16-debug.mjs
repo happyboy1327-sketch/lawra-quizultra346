@@ -9,30 +9,6 @@ import axios from "axios";
 
 dotenv.config();
 
-// ============================================================================
-// QUIZ DEBUG
-// ============================================================================
-const DEBUG_QUIZ = true;
-const DEBUG_MAX_LEN = 1000;
-
-function debugLog(label, data, maxLen = DEBUG_MAX_LEN) {
-  if (!DEBUG_QUIZ) return;
-  let text;
-  try {
-    text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-  } catch (e) {
-    text = String(data);
-  }
-  if (text && text.length > maxLen) {
-    text = text.slice(0, maxLen) + `\n...[truncated: total ${text.length} chars]`;
-  }
-  console.log(`\n===== [QUIZ-DEBUG] ${label} =====\n${text}\n=====================================\n`);
-}
-
-function debugFail(stage, data) {
-  debugLog(`FAIL: ${stage}`, data);
-}
-
 
 // ============================================================================
 // 1. 설정 및 초기화 (Configuration & Init)
@@ -1478,7 +1454,7 @@ const QuizService = {
       reasoning_effort: reasoningEffort,
     });
     const content = response?.choices?.[0]?.message?.content;
-    debugLog("MISTRAL_RAW_RESPONSE", { model: MODEL, reasoningEffort, content });
+
     if (typeof content !== "string") return null;
     try {
       return JSON.parse(content);
