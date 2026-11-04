@@ -1480,7 +1480,7 @@ const QuizService = {
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
         top_p: 0.0,
-        reasoning_effort: "medium",
+        reasoning_effort: 'medium',
       });
       let contentRes = response?.choices?.[0]?.message?.content;
       if (typeof contentRes !== "string") return null;
