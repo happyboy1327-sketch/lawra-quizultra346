@@ -1466,7 +1466,7 @@ const QuizService = {
   async generateQuiz(article, retriesLeft = 2) {
     if (!article?.lawName || !article?.num || !article?.content || article.content.length < 30) return null;
     
-    const isConstitution = article.lawName.includes("대한민국헌법") || article.lawId == "001444" || article.lawId == "61603";
+    const isConstitution = article.lawName.includes("대한민국헌법") || article.lawId == "001444" ;
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
     const userPrompt = PROMPTS.generate(article, content, refContent);
@@ -1483,9 +1483,9 @@ const QuizService = {
         reasoning_effort: "medium",
       };  
 
-      if (!isConstitution) {
+      /*if (!isConstitution) {
         requestOptions.stop = ["IDK"];
-      }
+      }*/
 
       const response = await client.chat.complete(requestOptions);
       let contentRes = response?.choices?.[0]?.message?.content;
