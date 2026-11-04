@@ -13,7 +13,7 @@ dotenv.config();
 // QUIZ DEBUG
 // ============================================================================
 const DEBUG_QUIZ = true;
-const DEBUG_MAX_LEN = 500;
+const DEBUG_MAX_LEN = 1000;
 
 function debugLog(label, data, maxLen = DEBUG_MAX_LEN) {
   if (!DEBUG_QUIZ) return;
@@ -1400,6 +1400,58 @@ function extractLawCitations(text, sources, primaryLawName) {
 }
 
 function validateLawArticleCitations(quiz, article, refContent, auditResult = null) {
+  const sources = buildLawSourceMap(article, refContent);
+  const primaryLawKey = normalizeLawCitationText(article?.lawName);
+  const texts = [
+    quiz?.question,
+    quiz?.answer,
+    quiz?.explanation_answer,
+    quiz?.explanation?.string,
+    ...(Array.isArray(quiz?.options) ? quiz.options.map(option => option?.text) : [])
+  ].filter(value => typeof value === "string");
+
+  const citations = texts.flatMap(text => extractLawCitations(text, sources, primaryLawKey));
+  for (const citation of citations) {
+    const lawArticles = sources.get(citation.lawKey);
+    const sourceContent = lawArticles?.get(citation.articleNum);
+    if (!sourceContent) {
+      return {
+        valid: false,
+        reason: `제공된 법령 원문에서 확인되지 않는 인용입니다: ${citation.lawKey} ${citation.articleNum}`
+      };
+    }
+    const hierarchy = validateCitationHierarchy(sourceContent, citation);
+    if (!hierarchy.valid) {
+      return {
+        valid: false,
+        reason: `${citation.lawKey} ${citation.articleNum} ${citation.raw}: ${hierarchy.reason}`
+      };
+    }
+  }
+
+  // 감사 모델의 인용 근거가 실제로 해당 인용 조문의 본문을 뒷받침하는지 확인한다.
+  if (auditResult && citations.length) {
+    const claimEvidence = Array.isArray(auditResult.claim_evidence) ? auditResult.claim_evidence : [];
+    for (const citation of citations) {
+      const sourceContent = sources.get(citation.lawKey)?.get(citation.articleNum) || "";
+      const related = claimEvidence.filter(item => {
+        const claimText = `${item?.claim ?? ""} ${item?.reasoning ?? ""}`;
+        const compactClaim = normalizeLawCitationText(claimText);
+        return compactClaim.includes(citation.articleNum) ||
+          compactClaim.includes(`${citation.lawKey}${citation.articleNum}`);
+      });
+      const supported = related.length > 0 && related.some(item =>
+        getBestEvidenceSimilarity(item?.evidence_quote, sourceContent) >= 0.66
+      );
+      if (!supported) {
+        return {
+          valid: false,
+          reason: `${citation.lawKey} ${citation.articleNum} 인용을 뒷받침하는 직접 근거가 해당 조문 원문에서 확인되지 않습니다. 참조 자료에 조문이 존재한다는 사실만으로는 인용을 인정하지 않습니다.`
+        };
+      }
+    }
+  }
+
   return { valid: true };
 }
 
