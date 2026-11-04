@@ -1472,16 +1472,22 @@ const QuizService = {
     const userPrompt = PROMPTS.generate(article, content, refContent);
     const finalPrompt = (isConstitution ? "" : `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라.\n{ "error": "[IDK]" }\n`) + userPrompt;
 
-    try {
+      try {
       await this.throttle();
-      const response = await client.chat.complete({
+      const requestOptions = {
         model: MODEL,
         responseFormat: { type: "json_object" },
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
         top_p: 0.0,
-        reasoning_effort: 'medium',
-      });
+        reasoning_effort: "medium",
+      };  
+
+      if (!isConstitution) {
+        requestOptions.stop = ["[IDK]"];
+      }
+
+      const response = await client.chat.complete(requestOptions);
       let contentRes = response?.choices?.[0]?.message?.content;
       if (typeof contentRes !== "string") return null;
 
