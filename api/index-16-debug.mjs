@@ -1450,7 +1450,7 @@ const QuizService = {
       responseFormat: { type: "json_object" },
       messages: [{ role: "user", content: prompt }],
       temperature: 0.05, 
-      top_p: 0.0,
+      top_p: 1.0,
       reasoning_effort: reasoningEffort,
     });
     const content = response?.choices?.[0]?.message?.content;
@@ -1479,23 +1479,46 @@ const QuizService = {
         responseFormat: { type: "json_object" },
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.0,
-        top_p: 0.0,
+        top_p: 1.0,
         reasoning_effort: "medium",
       };  
 
       if (!isConstitution) {
-        requestOptions.stop = ["[IDK]"];
+        requestOptions.stop = ["IDK"];
       }
 
       const response = await client.chat.complete(requestOptions);
       let contentRes = response?.choices?.[0]?.message?.content;
       if (typeof contentRes !== "string") return null;
 
-      let rawQuiz = JSON.parse(contentRes.replace(/^\s*```json\s*/i, "").replace(/^\s*```\s*/i, "").replace(/\s*```\s*$/i, "").trim());
-      if (!rawQuiz || rawQuiz.error) return null;
+      let rawQuiz;
+
+try {
+  rawQuiz = JSON.parse(
+    contentRes
+      .replace(/^```json/i, "")
+      .replace(/^```/, "")
+      .replace(/```$/, "")
+      .trim()
+  );
+} catch (parseError) {
+  console.error("[Mistral] JSON 파싱 실패:", parseError.message);
+  console.error("[Mistral 원본 content]:", contentRes);
+  return null;
+}
+      if (!rawQuiz || rawQuiz.error) {
+  console.error("[Mistral] 모델이 error 또는 빈 퀴즈 반환:", rawQuiz);
+  return null;
+}
       
       return Utils.normalizeQuiz(rawQuiz, article.num);
     } catch (err) {
+  console.error(`[QuizService.generateQuiz] Mistral 호출/파싱 실패`, {
+    message: err?.message,
+    status: err?.statusCode ?? err?.status,
+    response: err?.response?.data ?? err?.body ?? null,
+    stack: err?.stack
+  });
       if (Utils.isRateLimitError(err) && retriesLeft > 0) {
         await Utils.sleep(1350);
         return this.generateQuiz(article, retriesLeft - 1);
