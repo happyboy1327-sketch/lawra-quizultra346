@@ -1297,6 +1297,62 @@ function parseCitationSuffix(suffix) {
 }
 
 function validateCitationHierarchy(articleContent, citation) {
+  const tokens = citation.tokens;
+  if (!tokens.length) return { valid: true };
+
+  // 법령 인용의 계층 순서는 조 -> 항 -> 호 -> 목이어야 한다.
+  const order = { hang: 1, ho: 2, mok: 3 };
+  for (let i = 1; i < tokens.length; i++) {
+    if (order[tokens[i].type] <= order[tokens[i - 1].type]) {
+      return { valid: false, reason: "항·호·목의 인용 순서가 법령 구조와 다릅니다." };
+    }
+  }
+  if (tokens.filter(x => x.type === "hang").length > 1 ||
+      tokens.filter(x => x.type === "ho").length > 1 ||
+      tokens.filter(x => x.type === "mok").length > 1) {
+    return { valid: false, reason: "같은 단계의 항·호·목이 중복 인용되었습니다." };
+  }
+
+  const lines = String(articleContent ?? "").split(/\r?\n/);
+  const hangSet = new Set();
+  const hoSet = new Set();
+  const mokSet = new Set();
+  let activeHang = null;
+  let activeHo = null;
+
+  for (const line of lines) {
+    let m = line.match(/^\s*제(\d+)항(?!\s*제\d+호)(?:\s|$)/);
+    if (m) {
+      activeHang = Number(m[1]);
+      activeHo = null;
+      hangSet.add(activeHang);
+      continue;
+    }
+    m = line.match(/^\s*(?:제(\d+)항\s*)?제?(\d+)호(?:\s|$)/);
+    if (m) {
+      const parentHang = m[1] ? Number(m[1]) : activeHang;
+      const ho = Number(m[2]);
+      activeHang = parentHang;
+      activeHo = ho;
+      hoSet.add(`${parentHang ?? "_"}:${ho}`);
+      continue;
+    }
+    m = line.match(/^\s*([가-하])목(?:\s|$)/);
+    if (m && activeHo != null) mokSet.add(`${activeHang ?? "_"}:${activeHo}:${m[1]}`);
+  }
+
+  const hang = tokens.find(x => x.type === "hang")?.value;
+  const ho = tokens.find(x => x.type === "ho")?.value;
+  const mok = tokens.find(x => x.type === "mok")?.value;
+  if (hang != null && !hangSet.has(hang)) {
+    return { valid: false, reason: `원문에 제${hang}항이 존재하지 않습니다.` };
+  }
+  if (ho != null && !hoSet.has(`${hang ?? "_"}:${ho}`) && !hoSet.has(`_:${ho}`)) {
+    return { valid: false, reason: `원문에 ${hang != null ? `제${hang}항 ` : ""}제${ho}호가 존재하지 않습니다.` };
+  }
+  if (mok != null && !mokSet.has(`${hang ?? "_"}:${ho}:${mok}`) && !mokSet.has(`_:${ho}:${mok}`)) {
+    return { valid: false, reason: `원문에 ${mok}목이 해당 호의 하위 항목으로 존재하지 않습니다.` };
+  }
   return { valid: true };
 }
 
