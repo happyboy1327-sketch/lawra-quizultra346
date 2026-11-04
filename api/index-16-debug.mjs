@@ -1470,7 +1470,7 @@ const QuizService = {
     const content = String(article.content || "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
     const refContent = String(article.referencedContent || "").trim();
     const userPrompt = PROMPTS.generate(article, content, refContent);
-    const finalPrompt = (isConstitution ? `[SYSTEM 지침]\n헌법 퀴즈는 반드시 완성하라.idk 그딴거 없다.\n` : `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라.\n{ "error": "[IDK]" }\n`) + userPrompt;
+    const finalPrompt = (isConstitution ? "" : `[SYSTEM 지침]\n퀴즈 출제가 불가능하면 아래 JSON 형태로 응답하라.\n{ "error": "[IDK]" }\n`) + userPrompt;
 
     try {
       await this.throttle();
