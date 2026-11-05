@@ -1687,6 +1687,7 @@ if (polarity === "negative" || polarity === "positive") {
    }
    lastReason = audit.reason;
  }
+ }
 
       if (pass === maxCorrections) break;
       const corrected = await this.fixQuiz(quiz, article, lastReason);
@@ -1695,7 +1696,6 @@ if (polarity === "negative" || polarity === "positive") {
     }
 
     return { valid: false, step: "audit", reason: lastReason, quiz };
-  }
   },
   
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
