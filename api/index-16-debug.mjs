@@ -1697,8 +1697,7 @@ if (polarity === "negative" || polarity === "positive") {
       }
       quiz = corrected;
     }
-
-
+    }
     return { valid: false, step: "audit", reason: `최대 재작성 횟수 이후에도 통과하지 못함: ${lastReason}`, quiz };
   },
   
