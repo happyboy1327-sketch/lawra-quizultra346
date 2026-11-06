@@ -44,5 +44,12 @@ if (apps.length === 0) {
     console.log("⚠️ Firebase Admin SDK는 이미 초기화되어 재사용됩니다.");
 }
 
-// 5. 데이터베이스 인스턴스를 가져와서 내보냅니다.
-export const db = adminApp.firestore();
+// 5. 데이터베이스 인스턴스를 가져와서 설정을 추가한 후 내보냅니다.
+const firestoreDb = adminApp.firestore();
+
+// 💡여기에 ignoreUndefinedProperties 추가!
+firestoreDb.settings({
+  ignoreUndefinedProperties: true
+});
+
+export const db = firestoreDb;
