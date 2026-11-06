@@ -1675,6 +1675,11 @@ if (polarity === "negative" || polarity === "positive") {
         lastReason = `구조 검증: ${structure.reason}`;
         console.warn(lastReason);
       } else {
+        const citationCheck = validateLawArticleCitations(quiz, article, refContent);
+
+ if (!citationCheck.valid) {
+   lastReason = `조문 번호 검증 실패: ${citationCheck.reason}`;
+ } else {
         const audit = await this.auditQuiz(quiz, article, refContent);
         if (audit.valid) {
           console.log(`[근거 감사 통과] ${pass === 0 ? "최초 생성" : `재작성 ${pass}회 후`}`);
@@ -1692,6 +1697,7 @@ if (polarity === "negative" || polarity === "positive") {
       }
       quiz = corrected;
     }
+
 
     return { valid: false, step: "audit", reason: `최대 재작성 횟수 이후에도 통과하지 못함: ${lastReason}`, quiz };
   },
