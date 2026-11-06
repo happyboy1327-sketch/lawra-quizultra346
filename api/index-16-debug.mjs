@@ -820,12 +820,15 @@ const LawParser = {
 
     const fullContent = lines.join("\n").trim();
     return {
-      num,
-      content: fullContent,
-      hang: hangTexts,
-      lawName,
-      isDeleted: joContent.includes("삭제") && fullContent.length < 20,
-    };
+  num,
+  content: fullContent,
+  hang: hangTexts,
+  lawName,
+  hasExplicitHangs: !!hangs,
+  hasExplicitHos: !!hos,
+  isImplicitSingleHang: !hangs && !hos,
+  isDeleted: joContent.includes("삭제") && fullContent.length < 20,
+};
   }
 };
 
@@ -1280,7 +1283,7 @@ function parseCitationSuffix(suffix) {
   return { tokens, consumed: lastIndex, compact };
 }
 
-function validateCitationHierarchy(articleContent, citation) {
+function validateCitationHierarchy(articleContent, citation, isImplicitSingleHang = false) {
   const tokens = citation.tokens;
   if (!tokens.length) return { valid: true };
 
@@ -1347,6 +1350,10 @@ function validateCitationHierarchy(articleContent, citation) {
       mokSet.add(`${activeHang ?? "_"}:${activeHo}:${m[1]}`);
     }
   }
+  // LawParser가 항·호 구분이 없는 단일 조문으로 판별한 경우에만 제1항 인정
+if (isImplicitSingleHang) {
+  hangSet.add(1);
+}
   const hang = tokens.find(x => x.type === "hang")?.value;
   const ho = tokens.find(x => x.type === "ho")?.value;
   const mok = tokens.find(x => x.type === "mok")?.value;
@@ -1426,7 +1433,15 @@ function validateLawArticleCitations(quiz, article, refContent, auditResult = nu
         reason: `제공된 법령 원문에서 확인되지 않는 인용입니다: ${citation.lawKey} ${citation.articleNum}`
       };
     }
-    const hierarchy = validateCitationHierarchy(sourceContent, citation);
+    const isPrimaryArticle =
+  citation.lawKey === primaryLawKey &&
+  citation.articleNum === normalizeLawCitationText(article?.num);
+
+const hierarchy = validateCitationHierarchy(
+  sourceContent,
+  citation,
+  isPrimaryArticle && article?.isImplicitSingleHang === true
+);
     if (!hierarchy.valid) {
       console.error("[조문 계층 검증 원문]", {
         law: citation.lawKey,
