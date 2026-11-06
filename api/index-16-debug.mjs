@@ -1411,6 +1411,13 @@ function validateLawArticleCitations(quiz, article, refContent, auditResult = nu
     }
     const hierarchy = validateCitationHierarchy(sourceContent, citation);
     if (!hierarchy.valid) {
+      console.error("[조문 계층 검증 원문]", {
+        law: citation.lawKey,
+        article: citation.articleNum,
+        citation: citation.raw,
+        tokens: citation.tokens,
+        sourceContent
+      });
       return {
         valid: false,
         reason: `${citation.lawKey} ${citation.articleNum} ${citation.raw}: ${hierarchy.reason}`
