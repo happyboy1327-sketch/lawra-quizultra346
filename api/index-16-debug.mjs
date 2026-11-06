@@ -1297,39 +1297,56 @@ function validateCitationHierarchy(articleContent, citation) {
     return { valid: false, reason: "같은 단계의 항·호·목이 중복 인용되었습니다." };
   }
 
+    // 조문 머리글의 제①항 형식만 제1항으로 변환한다.
+  // 본문에 등장하는 ①②③ 등의 번호는 건드리지 않는다.
   const lines = String(articleContent ?? "")
-    // 원문의 ①②③ 형식을 제1항·제2항·제3항 형식으로 변환
-    .replace(/[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/g, marker =>
-      `\n제${marker.charCodeAt(0) - 0x2460 + 1}항 `
+    .replace(
+      /제([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])항/g,
+      (_, marker) => `제${marker.charCodeAt(0) - 0x2460 + 1}항`
     )
     .split(/\r?\n/);
+
   const hangSet = new Set();
   const hoSet = new Set();
   const mokSet = new Set();
+
   let activeHang = null;
   let activeHo = null;
 
   for (const line of lines) {
-    let m = line.match(/^\s*제(\d+)항(?!\s*제\d+호)(?:\s|$)/);
+    let rest = line;
+
+    // 항 번호를 먼저 추출한다.
+    // 제1항 제2호처럼 같은 줄에 항과 호가 있어도 처리한다.
+    let m = rest.match(/^\s*제(\d+)항(?=\s|제\d+호|$)/);
+
     if (m) {
       activeHang = Number(m[1]);
       activeHo = null;
       hangSet.add(activeHang);
-      continue;
-    }
-    m = line.match(/^\s*(?:제(\d+)항\s*)?제?(\d+)호(?:\s|$)/);
-    if (m) {
-      const parentHang = m[1] ? Number(m[1]) : activeHang;
-      const ho = Number(m[2]);
-      activeHang = parentHang;
-      activeHo = ho;
-      hoSet.add(`${parentHang ?? "_"}:${ho}`);
-      continue;
-    }
-    m = line.match(/^\s*([가-하])목(?:\s|$)/);
-    if (m && activeHo != null) mokSet.add(`${activeHang ?? "_"}:${activeHo}:${m[1]}`);
-  }
 
+      rest = rest.slice(m[0].length);
+    }
+
+    // 호 번호 추출
+    m = rest.match(/^\s*제?(\d+)호(?:\s|$)/);
+
+    if (m) {
+      const ho = Number(m[1]);
+
+      activeHo = ho;
+      hoSet.add(`${activeHang ?? "_"}:${ho}`);
+
+      continue;
+    }
+
+    // 목 번호 추출: 가목, 가.목 형식 모두 처리
+    m = line.match(/^\s*([가-하])(?:\.목|목)(?:\s|$)/);
+
+    if (m && activeHo != null) {
+      mokSet.add(`${activeHang ?? "_"}:${activeHo}:${m[1]}`);
+    }
+  }
   const hang = tokens.find(x => x.type === "hang")?.value;
   const ho = tokens.find(x => x.type === "ho")?.value;
   const mok = tokens.find(x => x.type === "mok")?.value;
