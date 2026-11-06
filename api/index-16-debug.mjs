@@ -1725,6 +1725,27 @@ if (polarity === "negative" || polarity === "positive") {
   }
 };
 
+// 객체나 배열 내부의 모든 undefined 값을 깊은 탐색(Deep Clean)으로 완벽하게 제거하는 함수
+function cleanUndefined(obj) {
+  if (Array.isArray(obj)) {
+    return obj
+      .map(item => cleanUndefined(item))
+      .filter(item => item !== undefined); // 배열 내의 완벽한 undefined 요소 제거
+  }
+  
+  if (obj !== null && typeof obj === 'object') {
+    return Object.entries(obj).reduce((acc, [key, value]) => {
+      const cleanedValue = cleanUndefined(value);
+      if (cleanedValue !== undefined) {
+        acc[key] = cleanedValue;
+      }
+      return acc;
+    }, {});
+  }
+  
+  return obj;
+}
+
 // ============================================================================
 // 6. API 라우팅 (API Routes)
 // ============================================================================
@@ -1758,7 +1779,14 @@ app.post("/api/lawquizzes/new", async (req, res) => {
     }
 
     const quizSetId = String(Date.now());
-    await db.collection("law_quizzes").doc(quizSetId).set({ createdAt: Date.now(), quizzes: newQuizzes });
+
+    // 💡 정제 함수로 감싸서 undefined가 있는 필드 자체를 날려버림
+    const cleanedQuizzes = cleanUndefined(newQuizzes);
+
+    await db.collection("law_quizzes").doc(quizSetId).set({ 
+      createdAt: Date.now(), 
+      quizzes: cleanedQuizzes 
+    });
     
     return res.json(newQuizzes);
   } catch (err) {
