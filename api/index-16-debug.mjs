@@ -1673,6 +1673,7 @@ if (polarity === "negative" || polarity === "positive") {
       const structure = this.validateRequiredFields(quiz);
       if (!structure.valid) {
         lastReason = `구조 검증: ${structure.reason}`;
+        console.warn(lastReason);
       } else {
         const audit = await this.auditQuiz(quiz, article, refContent);
         if (audit.valid) {
