@@ -1297,7 +1297,12 @@ function validateCitationHierarchy(articleContent, citation) {
     return { valid: false, reason: "같은 단계의 항·호·목이 중복 인용되었습니다." };
   }
 
-  const lines = String(articleContent ?? "").split(/\r?\n/);
+  const lines = String(articleContent ?? "")
+    // 원문의 ①②③ 형식을 제1항·제2항·제3항 형식으로 변환
+    .replace(/[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/g, marker =>
+      `\n제${marker.charCodeAt(0) - 0x2460 + 1}항 `
+    )
+    .split(/\r?\n/);
   const hangSet = new Set();
   const hoSet = new Set();
   const mokSet = new Set();
