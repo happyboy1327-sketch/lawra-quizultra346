@@ -1674,28 +1674,25 @@ if (polarity === "negative" || polarity === "positive") {
       if (!structure.valid) {
         lastReason = `구조 검증: ${structure.reason}`;
       } else {
-        const citationCheck = validateLawArticleCitations(quiz, article, refContent);
+        const audit = await this.auditQuiz(quiz, article, refContent);
+        if (audit.valid) {
+          console.log(`[근거 감사 통과] ${pass === 0 ? "최초 생성" : `재작성 ${pass}회 후`}`);
+          return { valid: true, reason: audit.reason, quiz, audit: audit.audit };
+        }
+        lastReason = audit.reason;
+      }
 
- if (!citationCheck.valid) {
-   lastReason = `조문 번호 검증 실패: ${citationCheck.reason}`;
- } else {
-   const audit = await this.auditQuiz(quiz, article, refContent);
-   if (audit.valid) {
-     const plaintextPkg = assembleQuizPlaintext(article, refContent, quiz);
-     console.log(`[Plaintext 패키지 생성 완료 길이: ${plaintextPkg.length}자]`);
-     return { valid: true, reason: audit.reason, quiz, audit: audit.audit, plaintext: plaintextPkg };
-   }
-   lastReason = audit.reason;
- }
- }
-
+      console.warn(`[파이프라인 ${pass + 1}/${maxCorrections + 1}] ${lastReason}`);
       if (pass === maxCorrections) break;
+
       const corrected = await this.fixQuiz(quiz, article, lastReason);
-      if (!corrected) return { valid: false, step: "rewrite", reason: lastReason, quiz };
+      if (!corrected) {
+        return { valid: false, step: "rewrite", reason: `재작성 실패 또는 [IDK]: ${lastReason}`, quiz };
+      }
       quiz = corrected;
     }
 
-    return { valid: false, step: "audit", reason: lastReason, quiz };
+    return { valid: false, step: "audit", reason: `최대 재작성 횟수 이후에도 통과하지 못함: ${lastReason}`, quiz };
   },
   
   async generateValidQuizSlot(slotIndex, maxTries = 3) {
@@ -1716,6 +1713,7 @@ if (polarity === "negative" || polarity === "positive") {
         const result = await this.runValidationPipeline(quiz, article, refContent);
         if (result.valid) {
           const { explanation_answer, calcError, ...clean } = result.quiz;
+          console.log(`[슬롯 ${slotIndex}] 퀴즈 생성 및 검증 성공 완수(${attempt}/${maxTries}) - 대상: ${law.lawName} ${article.num}`);
           return { ...clean, plaintextPackage: result.plaintext };
         }
       } catch (err) {
